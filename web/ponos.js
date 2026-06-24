@@ -461,41 +461,49 @@
         el.detailMeta.textContent = [task.category, task.assignee_email, task.due_date].filter(Boolean).join(' · ');
 
         if (state.editMode) {
-            el.detailBody.innerHTML = buildTaskForm(task);
+            el.detailBody.innerHTML = '<div class="ponos-detail-layout ponos-detail-layout--edit">'
+                + '<div class="ponos-detail-main ponos-detail-main--full">' + buildTaskForm(task) + '</div>'
+                + '</div>';
             wireTaskForm(task.id);
             return;
         }
 
-        const colors = colorFromText(task.category || '');
-        let html = '<div class="ponos-form"><div><strong>' + escapeHtml(i18n['ponos.field.description']) + '</strong><p>' + escapeHtml(task.description || '') + '</p></div>';
+        let mainHtml = '<div class="ponos-form">';
+        mainHtml += '<div><strong>' + escapeHtml(i18n['ponos.field.description']) + '</strong><p>' + escapeHtml(task.description || '') + '</p></div>';
 
         if ((task.checklist || []).length > 0) {
-            html += '<div><strong>' + escapeHtml(i18n['ponos.field.checklist']) + '</strong><div class="ponos-checklist">';
+            mainHtml += '<div><strong>' + escapeHtml(i18n['ponos.field.checklist']) + '</strong><div class="ponos-checklist">';
             task.checklist.forEach(function (item) {
-                html += '<label class="ponos-checklist-item"><input type="checkbox" data-checklist-id="' + item.id + '"' + (item.done ? ' checked' : '') + '><span>' + escapeHtml(item.label) + '</span></label>';
+                mainHtml += '<label class="ponos-checklist-item"><input type="checkbox" data-checklist-id="' + item.id + '"' + (item.done ? ' checked' : '') + '><span>' + escapeHtml(item.label) + '</span></label>';
             });
-            html += '</div></div>';
+            mainHtml += '</div></div>';
         }
 
         if ((task.attachments || []).length > 0) {
-            html += '<div class="ponos-attachments"><strong>' + escapeHtml(i18n['ponos.field.attachments']) + '</strong>';
+            mainHtml += '<div class="ponos-attachments"><strong>' + escapeHtml(i18n['ponos.field.attachments']) + '</strong>';
             task.attachments.forEach(function (file) {
-                html += '<a href="' + attachmentUrl(file.id) + '">' + escapeHtml(file.filename) + '</a>';
+                mainHtml += '<a href="' + attachmentUrl(file.id) + '">' + escapeHtml(file.filename) + '</a>';
             });
-            html += '</div>';
+            mainHtml += '</div>';
         }
+        mainHtml += '</div>';
 
-        html += '<div><strong>' + escapeHtml(i18n['ponos.task.messages']) + '</strong><div class="ponos-messages" id="ponos-messages">';
+        let chatHtml = '<div class="ponos-detail-chat">';
+        chatHtml += '<h3 class="ponos-detail-chat-title">' + escapeHtml(i18n['ponos.task.messages']) + '</h3>';
+        chatHtml += '<div class="ponos-messages" id="ponos-messages">';
         (task.messages || []).forEach(function (message) {
-            html += renderMessageHtml(message);
+            chatHtml += renderMessageHtml(message);
         });
-        html += '</div></div>';
+        chatHtml += '</div>';
+        chatHtml += '<div class="ponos-message-compose"><label>' + escapeHtml(i18n['ponos.field.message']) + '<textarea id="ponos-message-text" rows="3"></textarea></label>';
+        chatHtml += '<label>' + escapeHtml(i18n['ponos.field.attachments']) + '<input type="file" id="ponos-message-files" multiple></label>';
+        chatHtml += '<button type="button" id="ponos-send-message" class="ponos-btn">' + escapeHtml(i18n['ponos.btn.send']) + '</button></div>';
+        chatHtml += '</div>';
 
-        html += '<div class="ponos-message-compose"><label>' + escapeHtml(i18n['ponos.field.message']) + '<textarea id="ponos-message-text" rows="3"></textarea></label>';
-        html += '<label>' + escapeHtml(i18n['ponos.field.attachments']) + '<input type="file" id="ponos-message-files" multiple></label>';
-        html += '<button type="button" id="ponos-send-message" class="ponos-btn">' + escapeHtml(i18n['ponos.btn.send']) + '</button></div></div>';
-
-        el.detailBody.innerHTML = html;
+        el.detailBody.innerHTML = '<div class="ponos-detail-layout">'
+            + '<div class="ponos-detail-main">' + mainHtml + '</div>'
+            + chatHtml
+            + '</div>';
 
         el.detailBody.querySelectorAll('input[data-checklist-id]').forEach(function (checkbox) {
             checkbox.addEventListener('change', function () {
@@ -509,6 +517,19 @@
                 sendMessage(task.id);
             });
         }
+
+        scrollMessagesToEnd();
+    }
+
+    function scrollMessagesToEnd() {
+        const log = document.getElementById('ponos-messages');
+        if (!log) {
+            return;
+        }
+
+        window.requestAnimationFrame(function () {
+            log.scrollTop = log.scrollHeight;
+        });
     }
 
     function renderMessageHtml(message) {

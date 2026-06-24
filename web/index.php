@@ -125,14 +125,55 @@ foreach ($i18nKeys as $key) {
         }
         .ponos-detail.is-open { display: grid; place-items: stretch; }
         .ponos-detail-panel {
-            margin-left: auto; width: min(720px, 100%); height: 100%; background: #fff; overflow: auto;
-            box-shadow: -12px 0 40px rgba(15,23,42,.18); display: grid; grid-template-rows: auto 1fr;
+            margin-left: auto;
+            width: min(1120px, 96vw);
+            height: 100%;
+            background: #fff;
+            box-shadow: -12px 0 40px rgba(15,23,42,.18);
+            display: grid;
+            grid-template-rows: auto 1fr;
+            overflow: hidden;
         }
         .ponos-detail-head {
             display: flex; justify-content: space-between; gap: 10px; align-items: flex-start;
-            padding: 16px 18px; border-bottom: 1px solid var(--kvt-line); position: sticky; top: 0; background: #fff; z-index: 2;
+            padding: 16px 20px; border-bottom: 1px solid var(--kvt-line); background: #fff; z-index: 2;
         }
-        .ponos-detail-body { padding: 16px 18px 28px; display: grid; gap: 18px; }
+        .ponos-detail-body {
+            min-height: 0;
+            overflow: hidden;
+            padding: 0;
+        }
+        .ponos-detail-layout {
+            display: grid;
+            grid-template-columns: minmax(300px, 1fr) minmax(380px, 1.2fr);
+            height: 100%;
+            min-height: 0;
+        }
+        .ponos-detail-layout--edit {
+            grid-template-columns: 1fr;
+        }
+        .ponos-detail-main {
+            padding: 18px 20px 24px;
+            overflow-y: auto;
+            min-height: 0;
+            border-right: 1px solid var(--kvt-line);
+        }
+        .ponos-detail-main--full {
+            border-right: 0;
+        }
+        .ponos-detail-chat {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            height: 100%;
+            padding: 18px 20px 20px;
+            background: linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%);
+        }
+        .ponos-detail-chat-title {
+            margin: 0 0 12px;
+            font-size: 1rem;
+            color: var(--kvt-perkins-blue);
+        }
         .ponos-form { display: grid; gap: 12px; }
         .ponos-form label { display: grid; gap: 6px; font-weight: 700; color: var(--kvt-perkins-blue); font-size: 0.9rem; }
         .ponos-form input, .ponos-form select, .ponos-form textarea {
@@ -140,7 +181,15 @@ foreach ($i18nKeys as $key) {
         }
         .ponos-checklist { display: grid; gap: 8px; }
         .ponos-checklist-item { display: flex; gap: 8px; align-items: center; }
-        .ponos-messages { display: grid; gap: 10px; max-height: 360px; overflow: auto; padding-right: 4px; }
+        .ponos-messages {
+            display: grid;
+            gap: 10px;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 4px;
+            align-content: start;
+        }
         .ponos-message {
             border: 1px solid var(--kvt-line); border-radius: 12px; padding: 10px 12px;
         }
@@ -149,7 +198,15 @@ foreach ($i18nKeys as $key) {
             display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 700;
         }
         .ponos-message--system { font-style: italic; color: var(--kvt-muted); background: #f8fafc; }
-        .ponos-message-compose { display: grid; gap: 8px; }
+        .ponos-message-compose {
+            display: grid;
+            gap: 8px;
+            flex: 0 0 auto;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--kvt-line);
+            background: linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%);
+        }
         .ponos-attachments { display: grid; gap: 6px; font-size: 0.9rem; }
         .ponos-attachments a { color: var(--kvt-main-blue); }
         @media (max-width: 960px) {
@@ -157,6 +214,10 @@ foreach ($i18nKeys as $key) {
             .ponos-sidebar { border-right: 0; border-bottom: 1px solid var(--kvt-line); max-height: 240px; }
             .ponos-board { grid-template-columns: 1fr; }
             .ponos-detail-panel { width: 100%; }
+            .ponos-detail-layout { grid-template-columns: 1fr; height: auto; }
+            .ponos-detail-main { border-right: 0; border-bottom: 1px solid var(--kvt-line); max-height: 45vh; }
+            .ponos-detail-chat { height: auto; min-height: 45vh; }
+            .ponos-messages { max-height: 32vh; }
         }
     </style>
 </head>
