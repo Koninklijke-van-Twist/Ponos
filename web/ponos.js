@@ -682,6 +682,8 @@
         state.activeTask = { title: '', description: '', category: (boot.categories || [])[0] || '', checklist: [''] };
         state.editMode = true;
         state.task = '';
+        el.detailTitle.textContent = i18n['ponos.btn.new_task'];
+        el.detailMeta.textContent = '';
         renderTaskDetail();
         el.detail.classList.add('is-open');
         el.detail.setAttribute('aria-hidden', 'false');
