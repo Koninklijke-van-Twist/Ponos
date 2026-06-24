@@ -1,0 +1,44 @@
+---
+description: Ponos projectconventies voor architectuur, data, UI en tests
+alwaysApply: true
+---
+
+# Ponos projectregels
+
+## Scope en architectuur
+- Deze applicatie draait volledig vanuit de map `web/`; alles buiten `web/` bestaat niet op de server.
+- Houd links relatief (`index.php`, `ponos_api.php?...`) of vanaf `/ponos/...` als absolute paden nodig zijn.
+- De app is mobile-first. Nieuwe UI-wijzigingen moeten eerst op telefoonscherm goed leesbaar zijn.
+
+## Niet wijzigen
+- Bestand `web/logincheck.php` niet aanpassen.
+- Bestand `web/odata.php` niet aanpassen.
+- Bestand `web/auth.php` alleen aanpassen na expliciete gebruikersvraag.
+
+## Data en logica
+- Hoofdflow staat in `web/index.php`.
+- BC-helpers staan in `web/ponos_data.php`.
+- Taakopslag staat in `web/ponos_storage.php`.
+- JSON API staat in `web/ponos_api.php`.
+- Projecten komen uit `AppProjecten`; afdeling = `LVS_Global_Dimension_1_Code`.
+- Afdelingscache is persistent en groeit alleen (codes verdwijnen niet).
+- Gebruikerskeuze (bedrijf, afdeling) wordt per e-mail opgeslagen via `loadUserPrefs` / `saveUserPref`.
+
+## UI-regels
+- Geen zware frameworks introduceren zonder expliciet verzoek.
+- Gebruik bestaande favicon/manifest-bestanden op elke HTML-pagina.
+- Gebruik op de hoofdpagina altijd `logo-website.png`.
+- Sidebar links voor afdeling/project-navigatie; kanban in het midden.
+
+## Veiligheid en kwaliteit
+- Vang OData-fouten af en toon een korte gebruikersvriendelijke melding.
+- Gebruik cache-widget via `injectTimerHtml(...)` uit `odata.php`.
+
+## Tests en commits
+- Voor elke feature en fix een test in `tests/`.
+- Draai de volledige testsuite met `php tests/run.php` wanneer een feature af is.
+- Maak bij elke stap een commit op de feature branch; merge naar master wanneer groen (niet pushen).
+
+## Code-structuur (PHP)
+- Sectievolgorde: Includes/requires, Constants, Functies, Page load.
+- Classes in eigen bestand indien nodig.

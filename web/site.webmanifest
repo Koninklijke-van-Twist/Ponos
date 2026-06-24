@@ -1,0 +1,15 @@
+{
+    "name": "Ponos",
+    "short_name": "Ponos",
+    "icons": [
+        {
+            "src": "box.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        }
+    ],
+    "theme_color": "#0099cc",
+    "background_color": "#ffffff",
+    "display": "standalone"
+}
