@@ -43,6 +43,35 @@
         return url;
     }
 
+    function apiFetchUrl(action, params) {
+        const url = apiUrl(action, params);
+        url.searchParams.set('_t', String(Date.now()));
+        return url;
+    }
+
+    function firstDepartmentCode() {
+        const grouped = (state.navigation && state.navigation.projects_by_department) || {};
+        const codes = Object.keys(grouped).sort(function (left, right) {
+            return departmentLabel(left).localeCompare(departmentLabel(right), undefined, { sensitivity: 'base' });
+        });
+
+        return codes[0] || '';
+    }
+
+    function syncCompanySelect() {
+        if (!el.company || !state.company) {
+            return;
+        }
+
+        const options = Array.prototype.slice.call(el.company.options || []);
+        const match = options.find(function (option) {
+            return String(option.value) === String(state.company);
+        });
+        if (match) {
+            el.company.value = match.value;
+        }
+    }
+
     function showAlert(message) {
         if (!el.alert) {
             return;
@@ -127,20 +156,37 @@
         }
     }
 
-    async function loadNavigation() {
+    async function loadNavigation(options) {
+        options = options || {};
         clearAlert();
-        const response = await fetch(apiUrl('navigation', { company: state.company }), { credentials: 'same-origin' });
+        if (el.sidebar) {
+            el.sidebar.textContent = '…';
+        }
+
+        const response = await fetch(apiFetchUrl('navigation', { company: state.company }), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
         const data = await response.json();
         if (!data.ok) {
             showAlert(data.error || i18n['ponos.error.load_failed']);
-            return;
+            return false;
         }
+
         state.navigation = data;
         state.company = data.company || state.company;
-        if (!state.department && data.prefs && data.prefs.department) {
+        syncCompanySelect();
+
+        if (options.applyPrefs !== false && !state.department && data.prefs && data.prefs.department) {
             state.department = data.prefs.department;
         }
+
+        if (options.expandFirstDepartment && !state.department) {
+            state.department = firstDepartmentCode();
+        }
+
         renderSidebar();
+        return true;
     }
 
     function departmentLabel(code) {
@@ -240,7 +286,10 @@
         el.projectTitle.textContent = state.project;
         el.projectSubtitle.textContent = departmentLabel(state.department);
 
-        const response = await fetch(apiUrl('list_tasks', { company: state.company, project: state.project }), { credentials: 'same-origin' });
+        const response = await fetch(apiFetchUrl('list_tasks', { company: state.company, project: state.project }), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
         const data = await response.json();
         if (!data.ok) {
             showAlert(data.error || i18n['ponos.error.load_failed']);
@@ -378,7 +427,10 @@
     async function openTask(taskId) {
         state.task = taskId;
         syncUrl(true);
-        const response = await fetch(apiUrl('get_task', { company: state.company, project: state.project, task: taskId }), { credentials: 'same-origin' });
+        const response = await fetch(apiFetchUrl('get_task', { company: state.company, project: state.project, task: taskId }), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
         const data = await response.json();
         if (!data.ok) {
             showAlert(data.error || i18n['ponos.error.load_failed']);
@@ -696,10 +748,18 @@
                 state.department = '';
                 state.project = '';
                 state.task = '';
+                state.navigation = null;
+                state.tasks = [];
                 syncUrl(true);
-                await loadNavigation();
-                await loadTasks();
                 closeTaskDetail();
+
+                await savePrefs();
+                const loaded = await loadNavigation({ applyPrefs: false, expandFirstDepartment: true });
+                if (!loaded) {
+                    return;
+                }
+
+                await loadTasks();
             });
         }
 

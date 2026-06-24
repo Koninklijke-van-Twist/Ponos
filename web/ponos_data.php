@@ -387,9 +387,7 @@ function ponos_save_user_navigation_prefs(string $email, string $company, string
         saveUserPref($email, 'ponos_company', $company);
     }
 
-    if ($department !== '') {
-        saveUserPref($email, 'ponos_department', $department);
-    }
+    saveUserPref($email, 'ponos_department', $department);
 }
 
 function ponos_hash_text_for_color(string $text): int

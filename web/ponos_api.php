@@ -142,7 +142,7 @@ if ($action === 'navigation') {
 if ($action === 'save_prefs') {
     $company = trim((string) ($_POST['company'] ?? ''));
     $department = trim((string) ($_POST['department'] ?? ''));
-    if ($company !== '' || $department !== '') {
+    if ($company !== '') {
         ponos_save_user_navigation_prefs($userEmail, $company, $department);
     }
 

@@ -103,12 +103,20 @@ foreach ($i18nKeys as $key) {
             box-shadow: 0 4px 14px rgba(0,82,155,.06); cursor: pointer;
         }
         .ponos-card-bar {
-            height: 10px; position: relative; background: var(--ponos-bar-dark, #64748b);
+            height: 18px;
+            min-height: 18px;
+            position: relative;
+            background: var(--ponos-bar-dark, #64748b);
+            touch-action: none;
         }
         .ponos-card-bar-fill {
             position: absolute; inset: 0 auto 0 0; width: 0; background: var(--ponos-bar-light, #94a3b8);
         }
         .ponos-card-bar[draggable="true"] { cursor: grab; }
+        .ponos-card-bar[draggable="true"]:active { cursor: grabbing; }
+        @media (max-width: 960px) {
+            .ponos-card-bar { height: 24px; min-height: 24px; }
+        }
         .ponos-card-body { padding: 12px 14px 14px; }
         .ponos-card-title { font-weight: 700; color: var(--kvt-perkins-blue); margin: 0 0 6px; }
         .ponos-card-meta { font-size: 0.82rem; color: var(--kvt-muted); display: grid; gap: 4px; }

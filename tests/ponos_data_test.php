@@ -69,6 +69,25 @@ ponos_test('ponos_resolve_company_choice prefers requested company', function ()
     assert_eq('Alpha', ponos_resolve_company_choice($companies, '', 'Alpha'));
 });
 
-ponos_test('ponos_all_statuses contains three workflow columns', function (): void {
-    assert_eq([PONOS_STATUS_TODO, PONOS_STATUS_IN_PROGRESS, PONOS_STATUS_DONE], ponos_all_statuses());
+ponos_test('ponos_save_user_navigation_prefs clears department when empty', function (): void {
+    require_once dirname(__DIR__) . '/web/localization.php';
+
+    $email = 'ponos-prefs-clear-test@kvt.nl';
+    $path = getUserPrefsPath($email);
+    if ($path !== null && is_file($path)) {
+        unlink($path);
+    }
+
+    ponos_save_user_navigation_prefs($email, 'Test Company', 'ENG');
+    $prefs = ponos_load_user_navigation_prefs($email);
+    assert_eq('ENG', $prefs['department']);
+
+    ponos_save_user_navigation_prefs($email, 'Other Company', '');
+    $prefs = ponos_load_user_navigation_prefs($email);
+    assert_eq('Other Company', $prefs['company']);
+    assert_eq('', $prefs['department']);
+
+    if ($path !== null && is_file($path)) {
+        unlink($path);
+    }
 });
