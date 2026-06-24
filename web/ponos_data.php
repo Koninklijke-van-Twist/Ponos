@@ -62,7 +62,7 @@ function ponos_fetch_rows(string $company, string $entitySet, array $query, int 
     $auth = auth_get_auth_for_environment($environment);
     $url = ponos_company_entity_url($baseUrl, $environment, $company, $entitySet, $query);
 
-    return odata_get_all($url, $auth, $ttl);
+    return auth_odata_get_all($url, $auth, $ttl);
 }
 
 function ponos_try_fetch_rows(string $company, string $entitySet, array $query, int $ttl = PONOS_PROJECTS_TTL): array

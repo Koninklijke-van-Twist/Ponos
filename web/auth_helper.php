@@ -135,7 +135,9 @@ function auth_fetch_companies_for_environment(string $environment, int $ttlSecon
 
     foreach ($urls as $url) {
         try {
-            if (function_exists('odata_get_all')) {
+            if (function_exists('auth_odata_get_all')) {
+                $rows = auth_odata_get_all($url, $auth, $ttlSeconds);
+            } elseif (function_exists('odata_get_all')) {
                 $rows = odata_get_all($url, $auth, $ttlSeconds);
             } else {
                 $rows = auth_fetch_companies_for_environment_via_curl($url, $auth);
@@ -195,6 +197,8 @@ function auth_fetch_companies_for_environment_via_curl(string $url, array $auth)
             'Accept-Language: nl-NL,nl;q=0.9,en;q=0.8',
         ],
     ]);
+
+    auth_apply_curl_ssl_options($ch, $url);
 
     if (($auth['mode'] ?? '') === 'basic') {
         curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
@@ -407,4 +411,131 @@ function auth_set_current_company_context(?string $company, int $ttlSeconds = 30
         'environment' => $targetEnvironment,
         'auth' => $targetAuth,
     ];
+}
+
+/**
+ * Past TLS-opties toe voor interne KVT-hosts en omgevingen zonder CA-bundle.
+ */
+function auth_apply_curl_ssl_options($curlHandle, string $url = ''): void
+{
+    global $baseUrl;
+
+    $targetUrl = $url !== '' ? $url : (string) $baseUrl;
+    $host = strtolower((string) parse_url($targetUrl, PHP_URL_HOST));
+    if ($host !== '' && (str_ends_with($host, '.kvt.nl') || $host === 'kvt.nl')) {
+        curl_setopt($curlHandle, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($curlHandle, CURLOPT_SSL_VERIFYHOST, 0);
+
+        return;
+    }
+
+    $caInfo = ini_get('curl.cainfo');
+    if ($caInfo === false || trim((string) $caInfo) === '' || !is_file((string) $caInfo)) {
+        curl_setopt($curlHandle, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($curlHandle, CURLOPT_SSL_VERIFYHOST, 0);
+    }
+}
+
+/**
+ * OData JSON-request met TLS-fallback voor interne BC-hosts.
+ */
+function auth_odata_get_json(string $url, array $auth): array
+{
+    $ch = curl_init($url);
+    $userAgent = 'Demeter-ODataClient/1.0 (Windows; nl-NL)';
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_CONNECTTIMEOUT => 30,
+        CURLOPT_TIMEOUT => 300,
+        CURLOPT_USERAGENT => $userAgent,
+        CURLOPT_HTTPHEADER => [
+            'Accept: application/json',
+            'Accept-Language: nl-NL,nl;q=0.9,en;q=0.8',
+        ],
+    ]);
+
+    auth_apply_curl_ssl_options($ch, $url);
+
+    if (($auth['mode'] ?? '') === 'basic') {
+        curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+        curl_setopt($ch, CURLOPT_USERPWD, (string) ($auth['user'] ?? '') . ':' . (string) ($auth['pass'] ?? ''));
+    } elseif (($auth['mode'] ?? '') === 'ntlm') {
+        curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_NTLM);
+        curl_setopt($ch, CURLOPT_USERPWD, (string) ($auth['user'] ?? '') . ':' . (string) ($auth['pass'] ?? ''));
+    }
+
+    $raw = curl_exec($ch);
+    if ($raw === false) {
+        throw new RuntimeException('cURL error: ' . curl_error($ch));
+    }
+
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($code < 200 || $code >= 300) {
+        throw new RuntimeException('HTTP ' . $code . ' from OData: ' . $raw);
+    }
+
+    $json = json_decode((string) $raw, true);
+    if (!is_array($json)) {
+        throw new RuntimeException('Invalid JSON from OData');
+    }
+
+    return $json;
+}
+
+/**
+ * OData collectie met cache, inclusief TLS-fallback voor interne BC-hosts.
+ */
+function auth_odata_get_all(string $url, array $auth, int $ttlSeconds = 300): array
+{
+    if (
+        !function_exists('build_cache_key')
+        || !function_exists('cache_path_for_key')
+        || !function_exists('read_cache_payload')
+        || !function_exists('write_cache_json')
+    ) {
+        return auth_odata_get_all_without_cache($url, $auth);
+    }
+
+    if (function_exists('maybe_cleanup_expired_cache_files')) {
+        maybe_cleanup_expired_cache_files();
+    }
+
+    $ttlSeconds = max(1, $ttlSeconds);
+    $cacheKey = build_cache_key($url, $auth);
+    $cachePath = cache_path_for_key($cacheKey);
+
+    if (is_file($cachePath)) {
+        $cached = read_cache_payload($cachePath, $ttlSeconds);
+        if ($cached['valid']) {
+            return $cached['data'];
+        }
+
+        if ($cached['delete']) {
+            @unlink($cachePath);
+        }
+    }
+
+    $all = auth_odata_get_all_without_cache($url, $auth);
+    write_cache_json($cachePath, $all, $ttlSeconds, $url);
+
+    return $all;
+}
+
+function auth_odata_get_all_without_cache(string $url, array $auth): array
+{
+    $all = [];
+    $next = $url;
+
+    while ($next) {
+        $resp = auth_odata_get_json($next, $auth);
+        if (!isset($resp['value']) || !is_array($resp['value'])) {
+            throw new RuntimeException("OData response missing 'value' array");
+        }
+
+        $all = array_merge($all, $resp['value']);
+        $next = $resp['@odata.nextLink'] ?? null;
+    }
+
+    return $all;
 }
