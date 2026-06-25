@@ -79,4 +79,9 @@ ponos_test('ponos_group_stats reports created handled on time and categories', f
     }
     assert_eq(2, $categoriesByLabel['Backend']);
     assert_eq(1, $categoriesByLabel[ponos_category_display_label('')]);
+
+    foreach ($stats['categories'] as $row) {
+        $expected = ponos_category_color_from_text((string) ($row['color_key'] ?? ''));
+        assert_eq($expected['dark'], $row['colors']['dark']);
+    }
 });

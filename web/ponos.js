@@ -482,7 +482,10 @@
         const legend = document.createElement('ul');
         legend.className = 'ponos-stats-legend';
         const chartCategories = categories.map(function (category) {
-            const colors = categoryColorFromText(category.label);
+            const colorKey = Object.prototype.hasOwnProperty.call(category, 'color_key')
+                ? String(category.color_key)
+                : String(category.label || '');
+            const colors = category.colors || categoryColorFromText(colorKey);
             const item = document.createElement('li');
             item.innerHTML = '<span class="ponos-stats-legend-swatch" style="background:' + escapeHtml(colors.dark) + '"></span>'
                 + '<span>' + escapeHtml(category.label) + '</span>'
@@ -1835,7 +1838,10 @@
 
         const body = document.createElement('div');
         body.className = 'ponos-card-body';
-        body.addEventListener('click', function () {
+        body.addEventListener('click', function (event) {
+            if (event.target.closest('a')) {
+                return;
+            }
             openTask(task.id);
         });
 
@@ -2102,11 +2108,11 @@
             });
         }
 
-        wireMessageTextarea();
+        wireMessageTextarea(task.id);
         scrollMessagesToEnd();
     }
 
-    function wireMessageTextarea() {
+    function wireMessageTextarea(taskId) {
         const textarea = document.getElementById('ponos-message-text');
         if (!textarea) {
             return;
@@ -2121,7 +2127,47 @@
         }
 
         textarea.addEventListener('input', resize);
+        textarea.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage(taskId);
+            }
+        });
         resize();
+    }
+
+    function appendChecklistRow(editor, focus) {
+        const row = document.createElement('div');
+        row.className = 'ponos-checklist-row';
+        row.style.display = 'flex';
+        row.style.gap = '8px';
+        row.innerHTML = '<input type="text" class="ponos-checklist-input" value=""><button type="button" class="ponos-btn ponos-btn--ghost ponos-remove-checklist">−</button>';
+        editor.appendChild(row);
+        if (focus) {
+            const input = row.querySelector('.ponos-checklist-input');
+            if (input) {
+                input.focus();
+            }
+        }
+        return row;
+    }
+
+    function wireChecklistEditor(editor) {
+        if (!editor) {
+            return;
+        }
+
+        editor.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter' || event.shiftKey) {
+                return;
+            }
+            const target = event.target;
+            if (!target || !target.classList.contains('ponos-checklist-input')) {
+                return;
+            }
+            event.preventDefault();
+            appendChecklistRow(editor, true);
+        });
     }
 
     function scrollMessagesToEnd() {
@@ -2234,16 +2280,12 @@
 
         if (addButton && editor) {
             addButton.addEventListener('click', function () {
-                const row = document.createElement('div');
-                row.className = 'ponos-checklist-row';
-                row.style.display = 'flex';
-                row.style.gap = '8px';
-                row.innerHTML = '<input type="text" class="ponos-checklist-input" value=""><button type="button" class="ponos-btn ponos-btn--ghost ponos-remove-checklist">−</button>';
-                editor.appendChild(row);
+                appendChecklistRow(editor, true);
             });
         }
 
         if (editor) {
+            wireChecklistEditor(editor);
             editor.addEventListener('click', function (event) {
                 const target = event.target;
                 if (target && target.classList.contains('ponos-remove-checklist')) {
@@ -2566,12 +2608,39 @@
             .replace(/"/g, '&quot;');
     }
 
-    function formatDescriptionHtml(value) {
-        return escapeHtml(value).replace(/\r\n|\r|\n/g, '<br/>');
-    }
-
     function escapeAttr(value) {
         return escapeHtml(value).replace(/'/g, '&#039;');
+    }
+
+    function trimLinkTrailingPunctuation(value) {
+        return value.replace(/[.,;:!?)\]]+$/, '');
+    }
+
+    function linkifyEscapedHtml(escaped) {
+        const pattern = /\b((?:https?:\/\/|www\.)[^\s<]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi;
+
+        return escaped.replace(pattern, function (match) {
+            if (match.indexOf('@') >= 0) {
+                return '<a class="ponos-text-link" href="mailto:' + escapeAttr(match) + '">' + match + '</a>';
+            }
+
+            const trimmed = trimLinkTrailingPunctuation(match);
+            const suffix = match.slice(trimmed.length);
+            let href = trimmed;
+            if (/^www\./i.test(href)) {
+                href = 'https://' + href;
+            }
+            if (!/^https?:\/\//i.test(href)) {
+                return match;
+            }
+
+            return '<a class="ponos-text-link" href="' + escapeAttr(href) + '" target="_blank" rel="noopener noreferrer">'
+                + trimmed + '</a>' + suffix;
+        });
+    }
+
+    function formatDescriptionHtml(value) {
+        return linkifyEscapedHtml(escapeHtml(value).replace(/\r\n|\r|\n/g, '<br/>'));
     }
 
     function openNewTaskForm() {

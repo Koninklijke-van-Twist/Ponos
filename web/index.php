@@ -320,6 +320,10 @@ foreach ($i18nKeys as $key) {
             margin: 0 0 8px; font-size: 0.88rem; color: var(--kvt-text); line-height: 1.45;
             display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
         }
+        .ponos-text-link {
+            color: var(--kvt-main-blue);
+            word-break: break-all;
+        }
         .ponos-card-meta { font-size: 0.82rem; color: var(--kvt-muted); display: grid; gap: 4px; }
         .ponos-due--week,
         .ponos-due--today {

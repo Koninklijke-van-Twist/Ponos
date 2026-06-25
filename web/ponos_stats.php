@@ -85,6 +85,7 @@ function ponos_group_stats(string $groupId): array
     $createdByUser = [];
     $handledByUser = [];
     $categoryCounts = [];
+    $categoryLabels = [];
     $onTimeTotal = 0;
     $onTimeCount = 0;
 
@@ -100,11 +101,10 @@ function ponos_group_stats(string $groupId): array
             $handledByUser[$assignee] = ($handledByUser[$assignee] ?? 0) + 1;
         }
 
-        $categoryLabel = trim((string) ($row['category_label'] ?? ''));
-        if ($categoryLabel === '') {
-            $categoryLabel = ponos_category_display_label('');
-        }
-        $categoryCounts[$categoryLabel] = ($categoryCounts[$categoryLabel] ?? 0) + 1;
+        $colorKey = trim((string) ($row['category_label'] ?? ''));
+        $displayLabel = $colorKey !== '' ? $colorKey : ponos_category_display_label('');
+        $categoryCounts[$colorKey] = ($categoryCounts[$colorKey] ?? 0) + 1;
+        $categoryLabels[$colorKey] = $displayLabel;
 
         $dueDate = trim((string) ($row['due_date'] ?? ''));
         if ($status === PONOS_STATUS_DONE && $dueDate !== '') {
@@ -141,10 +141,12 @@ function ponos_group_stats(string $groupId): array
     });
 
     $categories = [];
-    foreach ($categoryCounts as $label => $count) {
+    foreach ($categoryCounts as $colorKey => $count) {
         $categories[] = [
-            'label' => $label,
+            'label' => $categoryLabels[$colorKey] ?? (string) $colorKey,
+            'color_key' => (string) $colorKey,
             'count' => (int) $count,
+            'colors' => ponos_category_color_from_text((string) $colorKey),
         ];
     }
     usort($categories, static function (array $left, array $right): int {
