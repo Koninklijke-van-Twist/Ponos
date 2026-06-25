@@ -17,6 +17,7 @@ require_once __DIR__ . '/ponos_categories.php';
 require_once __DIR__ . '/ponos_access.php';
 require_once __DIR__ . '/ponos_notify.php';
 require_once __DIR__ . '/ponos_reads.php';
+require_once __DIR__ . '/ponos_stats.php';
 
 /**
  * Functies
@@ -350,7 +351,28 @@ if ($action === 'list_tasks') {
     $params = ponos_api_require_params(['group']);
     ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
     $tasks = ponos_list_tasks_for_view($params['group'], $userEmail, $isAdmin);
-    ponos_api_json(['ok' => true, 'tasks' => $tasks]);
+    ponos_api_json([
+        'ok' => true,
+        'tasks' => $tasks,
+        'board_revision' => ponos_group_board_revision_from_tasks($tasks),
+    ]);
+}
+
+if ($action === 'board_revision') {
+    $params = ponos_api_require_params(['group']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $tasks = ponos_list_tasks_for_view($params['group'], $userEmail, $isAdmin);
+    ponos_api_json([
+        'ok' => true,
+        'revision' => ponos_group_board_revision_from_tasks($tasks),
+        'task_count' => count($tasks),
+    ]);
+}
+
+if ($action === 'group_stats') {
+    $params = ponos_api_require_params(['group']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    ponos_api_json(['ok' => true, 'stats' => ponos_group_stats($params['group'])]);
 }
 
 if ($action === 'get_task') {

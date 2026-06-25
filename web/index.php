@@ -43,6 +43,9 @@ $i18nKeys = [
     'ponos.group.admin_title', 'ponos.group.tab.categories', 'ponos.group.tab.access',
     'ponos.access.everyone', 'ponos.access.members', 'ponos.access.add_member', 'ponos.access.remove_member',
     'ponos.empty.no_members',
+    'ponos.stats.title', 'ponos.stats.btn', 'ponos.stats.user', 'ponos.stats.created', 'ponos.stats.handled',
+    'ponos.stats.on_time_title', 'ponos.stats.on_time_hint', 'ponos.stats.on_time_none',
+    'ponos.stats.categories_title', 'ponos.stats.empty', 'ponos.stats.tasks',
 ];
 $i18n = [];
 foreach ($i18nKeys as $key) {
@@ -168,6 +171,36 @@ foreach ($i18nKeys as $key) {
         .ponos-group-admin-btn {
             border: 0; background: transparent; cursor: pointer; font-size: 1.05rem; line-height: 1;
             padding: 2px 4px; color: var(--kvt-perkins-blue);
+        }
+        .ponos-group-stats-btn {
+            border: 0; background: transparent; cursor: pointer; font-size: 1.05rem; line-height: 1;
+            padding: 2px 4px; color: var(--kvt-perkins-blue);
+        }
+        .ponos-modal-dialog--stats { width: min(720px, 96vw); }
+        .ponos-stats-summary {
+            display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 280px); gap: 20px; margin-bottom: 20px;
+        }
+        .ponos-stats-on-time {
+            border: 1px solid var(--kvt-line); border-radius: 14px; padding: 16px 18px; background: #f7fbff;
+        }
+        .ponos-stats-on-time-value { font-size: 2.4rem; font-weight: 800; color: var(--kvt-perkins-blue); line-height: 1.1; }
+        .ponos-stats-on-time-label { font-weight: 700; color: var(--kvt-perkins-blue); margin: 0 0 6px; }
+        .ponos-stats-users-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .ponos-stats-users-table th, .ponos-stats-users-table td {
+            border-bottom: 1px solid var(--kvt-line); padding: 8px 10px; text-align: left;
+        }
+        .ponos-stats-users-table th { color: var(--kvt-perkins-blue); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.03em; }
+        .ponos-stats-users-table td:last-child, .ponos-stats-users-table th:last-child,
+        .ponos-stats-users-table td:nth-child(3), .ponos-stats-users-table th:nth-child(3) { text-align: right; }
+        .ponos-stats-chart-wrap { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: center; }
+        .ponos-stats-pie { width: 200px; height: 200px; }
+        .ponos-stats-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+        .ponos-stats-legend li { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; font-size: 0.88rem; }
+        .ponos-stats-legend-swatch { width: 14px; height: 14px; border-radius: 4px; }
+        .ponos-stats-section-title { margin: 0 0 10px; color: var(--kvt-perkins-blue); font-size: 1rem; }
+        @media (max-width: 720px) {
+            .ponos-stats-summary, .ponos-stats-chart-wrap { grid-template-columns: 1fr; }
+            .ponos-stats-pie { margin: 0 auto; }
         }
         .ponos-modal-dialog--wide { width: min(520px, 96vw); }
         .ponos-category-admin-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
@@ -521,6 +554,7 @@ foreach ($i18nKeys as $key) {
                     <div class="ponos-group-heading">
                         <strong id="ponos-project-title"></strong>
                         <button type="button" id="ponos-group-pin" class="ponos-pin-btn" hidden title="">📌</button>
+                        <button type="button" id="ponos-group-stats" class="ponos-group-stats-btn" hidden title="">📊</button>
                         <button type="button" id="ponos-group-admin" class="ponos-group-admin-btn" hidden title="">⚙</button>
                     </div>
                     <div id="ponos-project-subtitle" class="ponos-muted"></div>
@@ -624,6 +658,16 @@ foreach ($i18nKeys as $key) {
         </div>
         <div class="ponos-modal-actions" style="margin-top:14px;">
             <button type="button" id="ponos-archive-close" class="ponos-btn ponos-btn--ghost"><?= ponos_h(LOC('ponos.btn.cancel')) ?></button>
+        </div>
+    </div>
+</div>
+
+<div id="ponos-stats-modal" class="ponos-modal-overlay" hidden aria-hidden="true">
+    <div class="ponos-modal-dialog ponos-modal-dialog--stats" role="dialog" aria-modal="true" aria-labelledby="ponos-stats-modal-title">
+        <h3 id="ponos-stats-modal-title"><?= ponos_h(LOC('ponos.stats.title')) ?></h3>
+        <div id="ponos-stats-content" class="ponos-muted"><?= ponos_h(LOC('ponos.error.load_failed')) ?></div>
+        <div class="ponos-modal-actions" style="margin-top:14px;">
+            <button type="button" id="ponos-stats-close" class="ponos-btn ponos-btn--ghost"><?= ponos_h(LOC('ponos.btn.cancel')) ?></button>
         </div>
     </div>
 </div>

@@ -2,6 +2,7 @@
     const boot = window.PONOS_BOOT || {};
     const i18n = boot.i18n || {};
     const MY_TASKS = '__my_tasks__';
+    const LIVE_POLL_MS = 12000;
 
     const state = {
         group: boot.group || '',
@@ -25,6 +26,8 @@
         pendingReminderTask: null,
         archivePage: 1,
         archiveTotalPages: 1,
+        boardRevision: '',
+        livePollTimer: null,
     };
 
     const el = {
@@ -36,6 +39,7 @@
         groupTitle: document.getElementById('ponos-project-title'),
         groupSubtitle: document.getElementById('ponos-project-subtitle'),
         groupPin: document.getElementById('ponos-group-pin'),
+        groupStats: document.getElementById('ponos-group-stats'),
         groupAdmin: document.getElementById('ponos-group-admin'),
         categoryAdminModal: document.getElementById('ponos-category-admin-modal'),
         categoryAdminContent: document.getElementById('ponos-category-admin-content'),
@@ -87,6 +91,9 @@
         archivePageInfo: document.getElementById('ponos-archive-page-info'),
         archiveClose: document.getElementById('ponos-archive-close'),
         unarchiveTask: document.getElementById('ponos-unarchive-task'),
+        statsModal: document.getElementById('ponos-stats-modal'),
+        statsContent: document.getElementById('ponos-stats-content'),
+        statsClose: document.getElementById('ponos-stats-close'),
     };
 
     function formatI18n(key) {
@@ -143,6 +150,320 @@
         el.groupAdmin.hidden = !show;
         if (show) {
             el.groupAdmin.title = i18n['ponos.group.admin_title'];
+        }
+    }
+
+    function updateGroupStatsButton() {
+        if (!el.groupStats) {
+            return;
+        }
+        const group = currentGroup();
+        const show = group && !group.virtual && !!state.group;
+        el.groupStats.hidden = !show;
+        if (show) {
+            el.groupStats.title = i18n['ponos.stats.btn'];
+        }
+    }
+
+    function shouldPauseLiveRefresh() {
+        return state.editMode
+            || !!state.draggedTaskId
+            || !!state.pendingReminderTask
+            || (el.statsModal && !el.statsModal.hidden)
+            || (el.categoryAdminModal && !el.categoryAdminModal.hidden)
+            || (el.groupModal && !el.groupModal.hidden)
+            || (el.detail && el.detail.classList.contains('is-open') && state.editMode);
+    }
+
+    function stopLiveRefresh() {
+        if (state.livePollTimer) {
+            clearInterval(state.livePollTimer);
+            state.livePollTimer = null;
+        }
+    }
+
+    function startLiveRefresh() {
+        stopLiveRefresh();
+        state.livePollTimer = window.setInterval(pollBoardLive, LIVE_POLL_MS);
+    }
+
+    async function refreshActiveTaskSilently() {
+        if (!state.task || !state.group || state.editMode) {
+            return;
+        }
+
+        const response = await fetch(apiFetchUrl('get_task', { group: state.group, task: state.task }), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
+        const data = await response.json();
+        if (!data.ok) {
+            return;
+        }
+
+        state.activeTask = data.task;
+        const taskIndex = state.tasks.findIndex(function (item) { return item.id === state.task; });
+        if (taskIndex >= 0) {
+            state.tasks[taskIndex].unread_count = 0;
+        }
+        renderTaskDetail();
+    }
+
+    async function refreshBoardSilently() {
+        if (!state.group) {
+            return;
+        }
+
+        const openTaskId = state.task;
+        const response = await fetch(apiFetchUrl('list_tasks', { group: state.group }), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
+        const data = await response.json();
+        if (!data.ok) {
+            return;
+        }
+
+        state.tasks = data.tasks || [];
+        state.boardRevision = data.board_revision || '';
+        renderBoard();
+
+        if (!openTaskId) {
+            return;
+        }
+
+        const stillExists = state.tasks.some(function (task) { return task.id === openTaskId; });
+        if (!stillExists) {
+            closeTaskDetail();
+            return;
+        }
+
+        if (state.activeTask && !state.editMode) {
+            await refreshActiveTaskSilently();
+        }
+    }
+
+    async function pollBoardLive() {
+        if (!state.group || shouldPauseLiveRefresh() || document.hidden) {
+            return;
+        }
+
+        try {
+            const response = await fetch(apiFetchUrl('board_revision', { group: state.group }), {
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+            const data = await response.json();
+            if (!data.ok) {
+                return;
+            }
+
+            if (!state.boardRevision) {
+                state.boardRevision = data.revision || '';
+                return;
+            }
+
+            if (data.revision !== state.boardRevision) {
+                await refreshBoardSilently();
+                await loadNavigation({ applyPrefs: false });
+            }
+        } catch (error) {
+            // Ignore transient network errors during background refresh.
+        }
+    }
+
+    function renderStatsPieChart(svgEl, categories) {
+        if (!svgEl) {
+            return;
+        }
+
+        const total = categories.reduce(function (sum, item) { return sum + Number(item.count || 0); }, 0);
+        if (total <= 0) {
+            svgEl.innerHTML = '';
+            return;
+        }
+
+        const cx = 100;
+        const cy = 100;
+        const radius = 90;
+        let startAngle = -Math.PI / 2;
+        let paths = '';
+
+        categories.forEach(function (category) {
+            const count = Number(category.count || 0);
+            if (count <= 0) {
+                return;
+            }
+            const slice = (count / total) * Math.PI * 2;
+            const endAngle = startAngle + slice;
+            const x1 = cx + radius * Math.cos(startAngle);
+            const y1 = cy + radius * Math.sin(startAngle);
+            const x2 = cx + radius * Math.cos(endAngle);
+            const y2 = cy + radius * Math.sin(endAngle);
+            const largeArc = slice > Math.PI ? 1 : 0;
+            paths += '<path d="M ' + cx + ' ' + cy
+                + ' L ' + x1 + ' ' + y1
+                + ' A ' + radius + ' ' + radius + ' 0 ' + largeArc + ' 1 ' + x2 + ' ' + y2
+                + ' Z" fill="' + escapeHtml(category.color) + '"></path>';
+            startAngle = endAngle;
+        });
+
+        svgEl.setAttribute('viewBox', '0 0 200 200');
+        svgEl.innerHTML = paths;
+    }
+
+    function renderStatsPanel(stats) {
+        if (!el.statsContent) {
+            return;
+        }
+
+        stats = stats || {};
+        const users = Array.isArray(stats.users) ? stats.users : [];
+        const categories = Array.isArray(stats.categories) ? stats.categories : [];
+        const onTime = stats.on_time || {};
+        const taskTotal = Number(stats.task_total || 0);
+
+        if (taskTotal === 0) {
+            el.statsContent.className = 'ponos-muted';
+            el.statsContent.textContent = i18n['ponos.stats.empty'];
+            return;
+        }
+
+        el.statsContent.className = '';
+        const wrapper = document.createElement('div');
+
+        const summary = document.createElement('div');
+        summary.className = 'ponos-stats-summary';
+
+        const usersSection = document.createElement('div');
+        const usersTitle = document.createElement('h4');
+        usersTitle.className = 'ponos-stats-section-title';
+        usersTitle.textContent = i18n['ponos.stats.user'];
+        usersSection.appendChild(usersTitle);
+
+        if (users.length === 0) {
+            const emptyUsers = document.createElement('p');
+            emptyUsers.className = 'ponos-muted';
+            emptyUsers.textContent = i18n['ponos.stats.empty'];
+            usersSection.appendChild(emptyUsers);
+        } else {
+            const table = document.createElement('table');
+            table.className = 'ponos-stats-users-table';
+            table.innerHTML = '<thead><tr><th>' + escapeHtml(i18n['ponos.stats.user'])
+                + '</th><th>' + escapeHtml(i18n['ponos.stats.created'])
+                + '</th><th>' + escapeHtml(i18n['ponos.stats.handled'])
+                + '</th></tr></thead>';
+            const tbody = document.createElement('tbody');
+            users.forEach(function (row) {
+                const tr = document.createElement('tr');
+                const displayName = userNameByEmail(row.email);
+                const label = displayName !== '' ? displayName + ' (' + row.email + ')' : row.email;
+                tr.innerHTML = '<td>' + escapeHtml(label)
+                    + '</td><td>' + escapeHtml(String(row.created || 0))
+                    + '</td><td>' + escapeHtml(String(row.handled || 0)) + '</td>';
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            usersSection.appendChild(table);
+        }
+
+        const onTimeBox = document.createElement('div');
+        onTimeBox.className = 'ponos-stats-on-time';
+        const onTimeLabel = document.createElement('div');
+        onTimeLabel.className = 'ponos-stats-on-time-label';
+        onTimeLabel.textContent = i18n['ponos.stats.on_time_title'];
+        const onTimeValue = document.createElement('div');
+        onTimeValue.className = 'ponos-stats-on-time-value';
+        if (onTime.percent === null || onTime.percent === undefined) {
+            onTimeValue.textContent = '—';
+        } else {
+            onTimeValue.textContent = String(onTime.percent) + '%';
+        }
+        const onTimeHint = document.createElement('p');
+        onTimeHint.className = 'ponos-muted';
+        onTimeHint.style.margin = '8px 0 0';
+        onTimeHint.textContent = onTime.percent === null || onTime.percent === undefined
+            ? i18n['ponos.stats.on_time_none']
+            : i18n['ponos.stats.on_time_hint'];
+        onTimeBox.appendChild(onTimeLabel);
+        onTimeBox.appendChild(onTimeValue);
+        onTimeBox.appendChild(onTimeHint);
+
+        summary.appendChild(usersSection);
+        summary.appendChild(onTimeBox);
+        wrapper.appendChild(summary);
+
+        const chartSection = document.createElement('div');
+        const chartTitle = document.createElement('h4');
+        chartTitle.className = 'ponos-stats-section-title';
+        chartTitle.textContent = i18n['ponos.stats.categories_title'];
+        chartSection.appendChild(chartTitle);
+
+        const chartWrap = document.createElement('div');
+        chartWrap.className = 'ponos-stats-chart-wrap';
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'ponos-stats-pie');
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', i18n['ponos.stats.categories_title']);
+
+        const legend = document.createElement('ul');
+        legend.className = 'ponos-stats-legend';
+        const chartCategories = categories.map(function (category) {
+            const colors = colorFromText(category.label);
+            const item = document.createElement('li');
+            item.innerHTML = '<span class="ponos-stats-legend-swatch" style="background:' + escapeHtml(colors.dark) + '"></span>'
+                + '<span>' + escapeHtml(category.label) + '</span>'
+                + '<strong>' + escapeHtml(String(category.count || 0)) + '</strong>';
+            legend.appendChild(item);
+            return {
+                label: category.label,
+                count: category.count,
+                color: colors.dark,
+            };
+        });
+
+        renderStatsPieChart(svg, chartCategories);
+        chartWrap.appendChild(svg);
+        chartWrap.appendChild(legend);
+        chartSection.appendChild(chartWrap);
+        wrapper.appendChild(chartSection);
+
+        el.statsContent.innerHTML = '';
+        el.statsContent.appendChild(wrapper);
+    }
+
+    async function openStatsModal() {
+        if (!state.group || isMyTasksGroup(state.group) || !el.statsModal) {
+            return;
+        }
+
+        el.statsModal.hidden = false;
+        el.statsModal.setAttribute('aria-hidden', 'false');
+        if (el.statsContent) {
+            el.statsContent.className = 'ponos-muted';
+            el.statsContent.textContent = '…';
+        }
+
+        const response = await fetch(apiFetchUrl('group_stats', { group: state.group }), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
+        const data = await response.json();
+        if (!data.ok) {
+            if (el.statsContent) {
+                el.statsContent.textContent = data.error || i18n['ponos.error.load_failed'];
+            }
+            return;
+        }
+
+        renderStatsPanel(data.stats || {});
+    }
+
+    function hideStatsModal() {
+        if (el.statsModal) {
+            el.statsModal.hidden = true;
+            el.statsModal.setAttribute('aria-hidden', 'true');
         }
     }
 
@@ -632,8 +953,11 @@
         }
     }
 
-    async function loadTasks() {
-        clearAlert();
+    async function loadTasks(options) {
+        options = options || {};
+        if (!options.silent) {
+            clearAlert();
+        }
         const group = currentGroup();
 
         if (!state.group) {
@@ -654,6 +978,7 @@
             : '';
         updateGroupPinButton();
         updateGroupAdminButton();
+        updateGroupStatsButton();
 
         const canCreate = group && group.can_create_tasks !== false && !group.virtual;
         el.newTask.hidden = !canCreate;
@@ -670,6 +995,7 @@
             return;
         }
         state.tasks = data.tasks || [];
+        state.boardRevision = data.board_revision || '';
         renderBoard();
     }
 
@@ -2163,6 +2489,7 @@
         } else {
             await loadTasks();
         }
+        startLiveRefresh();
     }
 
     init();
