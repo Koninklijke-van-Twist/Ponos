@@ -82,7 +82,7 @@ function ponos_email_task_card_html(array $task): string
     $brand = ponos_email_brand();
     $groupName = (string) ($task['group_name'] ?? '');
     $categoryLabel = trim((string) ($task['category_label'] ?? ''));
-    $colors = ponos_color_from_text($categoryLabel !== '' ? $categoryLabel : $groupName);
+    $colors = ponos_category_color_from_text($categoryLabel !== '' ? $categoryLabel : $groupName);
     $link = ponos_email_task_link($task);
     $title = ponos_email_h((string) ($task['title'] ?? ''));
     $description = trim((string) ($task['description'] ?? ''));

@@ -10,6 +10,7 @@ require_once __DIR__ . '/ponos_access.php';
 require_once __DIR__ . '/ponos_archive.php';
 require_once __DIR__ . '/ponos_notify.php';
 require_once __DIR__ . '/ponos_reads.php';
+require_once __DIR__ . '/ponos_avatars.php';
 
 /**
  * Constants
@@ -316,7 +317,7 @@ function ponos_normalize_task_row(array $row): array
         'checklist_total' => count($checklist),
         'checklist_done' => $checklistDone,
         'attachments' => ponos_task_attachments($row),
-        'colors' => ponos_color_from_text($colorKey),
+        'colors' => ponos_category_color_from_text($colorKey),
     ];
 }
 
@@ -339,6 +340,7 @@ function ponos_normalize_message_row(array $row, array $task): array
         'kind' => (string) ($row['kind'] ?? 'user'),
         'created_at' => (string) ($row['created_at'] ?? ''),
         'colors' => ponos_color_from_text($email),
+        'avatar_url' => ponos_user_avatar_url($email),
         'attachments' => ponos_task_attachments($task, $messageId),
     ];
 }

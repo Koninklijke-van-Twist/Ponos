@@ -201,12 +201,15 @@ function ponos_list_tasks_for_view(string $groupId, string $userEmail, ?bool $is
         $isAdmin = ponos_current_user_is_admin();
     }
 
-    if (!ponos_is_my_tasks_group($groupId) && !ponos_user_has_group_access($userEmail, $groupId, $isAdmin)) {
+    if (!ponos_is_my_tasks_group($groupId) && !ponos_user_can_view_group($userEmail, $groupId, $isAdmin)) {
         return [];
     }
 
     if (ponos_is_my_tasks_group($groupId)) {
-        return ponos_enrich_tasks_with_unread(ponos_list_assigned_tasks($userEmail, $isAdmin), $userEmail);
+        return ponos_apply_task_permissions(
+            ponos_enrich_tasks_with_unread(ponos_list_assigned_tasks($userEmail, $isAdmin), $userEmail),
+            $userEmail
+        );
     }
 
     $group = ponos_find_group($groupId);
@@ -214,7 +217,10 @@ function ponos_list_tasks_for_view(string $groupId, string $userEmail, ?bool $is
         return [];
     }
 
-    return ponos_list_tasks_with_unread($groupId, $userEmail);
+    return ponos_apply_task_permissions(
+        ponos_list_tasks_with_unread($groupId, $userEmail),
+        $userEmail
+    );
 }
 
 function ponos_list_assigned_tasks(string $userEmail, ?bool $isAdmin = null): array
@@ -325,7 +331,7 @@ function ponos_navigation_payload(string $userEmail, ?bool $isAdmin = null): arr
     );
     $pinned = array_values(array_filter(
         ponos_load_pinned_groups($userEmail),
-        static fn(string $groupId): bool => ponos_user_has_group_access($userEmail, $groupId, $isAdmin)
+        static fn(string $groupId): bool => ponos_user_can_view_group($userEmail, $groupId, $isAdmin)
     ));
     $groupsPayload = [];
     foreach ($groups as $group) {

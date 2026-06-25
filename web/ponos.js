@@ -59,6 +59,7 @@
         accessMemberList: document.getElementById('ponos-access-member-list'),
         accessUserSelect: document.getElementById('ponos-access-user-select'),
         accessAddMember: document.getElementById('ponos-access-add-member'),
+        userFooterLabel: document.getElementById('ponos-user-footer-label'),
         userName: document.getElementById('ponos-user-name'),
         settingsBtn: document.getElementById('ponos-settings-btn'),
         settingsModal: document.getElementById('ponos-settings-modal'),
@@ -94,6 +95,13 @@
         statsModal: document.getElementById('ponos-stats-modal'),
         statsContent: document.getElementById('ponos-stats-content'),
         statsClose: document.getElementById('ponos-stats-close'),
+        devAdminToggle: document.getElementById('ponos-dev-admin'),
+        previewModal: document.getElementById('ponos-preview-modal'),
+        previewTitle: document.getElementById('ponos-preview-title'),
+        previewBody: document.getElementById('ponos-preview-body'),
+        previewDownload: document.getElementById('ponos-preview-download'),
+        previewClose: document.getElementById('ponos-preview-close'),
+        previewCancel: document.getElementById('ponos-preview-cancel'),
     };
 
     function formatI18n(key) {
@@ -112,18 +120,67 @@
         return label !== '' ? label : (i18n['ponos.category.uncategorized'] || 'Ongecategoriseerd');
     }
 
-    function userNameByEmail(email) {
+    function userByEmail(email) {
         const normalized = String(email || '').toLowerCase();
+        if (normalized === '') {
+            return null;
+        }
+        return (state.users || []).find(function (user) {
+            return String(user.Email || '').toLowerCase() === normalized;
+        }) || null;
+    }
+
+    function userNameByEmail(email) {
+        const user = userByEmail(email);
+        if (user && user.Naam) {
+            return String(user.Naam);
+        }
+        return '';
+    }
+
+    function userColorsByEmail(email) {
+        const user = userByEmail(email);
+        if (user && user.colors) {
+            return user.colors;
+        }
+        return colorFromText(email);
+    }
+
+    function userAvatarUrl(email, message) {
+        if (message && message.avatar_url) {
+            return String(message.avatar_url);
+        }
+        const user = userByEmail(email);
+        if (user && user.avatar_url) {
+            return String(user.avatar_url);
+        }
+        const normalized = String(email || '').toLowerCase().trim();
         if (normalized === '') {
             return '';
         }
-        const match = (state.users || []).find(function (user) {
-            return String(user.Email || '').toLowerCase() === normalized;
-        });
-        if (match && match.Naam) {
-            return String(match.Naam);
+        return 'ponos_user_avatar.php?email=' + encodeURIComponent(normalized);
+    }
+
+    function renderUserAvatarHtml(email, options) {
+        options = options || {};
+        const normalized = String(email || '').toLowerCase().trim();
+        if (normalized === '') {
+            return '';
         }
-        return '';
+        const colors = options.colors || userColorsByEmail(normalized);
+        const url = userAvatarUrl(normalized, options.message);
+        if (url === '') {
+            return '';
+        }
+        const extraClass = options.className ? ' ' + options.className : '';
+        return '<img class="ponos-user-avatar' + extraClass + '" src="' + escapeHtml(url) + '" width="30" height="30" alt="" style="border-color:' + escapeHtml(colors.border) + '">';
+    }
+
+    function renderUserLabelHtml(email, displayText, options) {
+        const text = displayText != null ? displayText : (userNameByEmail(email) || email);
+        return '<span class="ponos-user-label">'
+            + renderUserAvatarHtml(email, options)
+            + '<span class="ponos-user-label-text">' + escapeHtml(text) + '</span></span>';
     }
 
     function userDisplayName() {
@@ -136,8 +193,21 @@
     }
 
     function updateUserFooter() {
+        const email = currentUserEmail();
+        const displayName = userDisplayName();
+        if (el.userFooterLabel) {
+            if (email) {
+                el.userFooterLabel.innerHTML = renderUserAvatarHtml(email)
+                    + '<span id="ponos-user-name" class="ponos-user-footer-name">' + escapeHtml(displayName) + '</span>';
+                el.userName = document.getElementById('ponos-user-name');
+            } else {
+                el.userFooterLabel.innerHTML = '<span id="ponos-user-name" class="ponos-user-footer-name">' + escapeHtml(displayName) + '</span>';
+                el.userName = document.getElementById('ponos-user-name');
+            }
+            return;
+        }
         if (el.userName) {
-            el.userName.textContent = userDisplayName();
+            el.userName.textContent = displayName;
         }
     }
 
@@ -170,6 +240,7 @@
             || !!state.draggedTaskId
             || !!state.pendingReminderTask
             || (el.statsModal && !el.statsModal.hidden)
+            || (el.previewModal && !el.previewModal.hidden)
             || (el.categoryAdminModal && !el.categoryAdminModal.hidden)
             || (el.groupModal && !el.groupModal.hidden)
             || (el.detail && el.detail.classList.contains('is-open') && state.editMode);
@@ -358,7 +429,9 @@
                 const tr = document.createElement('tr');
                 const displayName = userNameByEmail(row.email);
                 const label = displayName !== '' ? displayName + ' (' + row.email + ')' : row.email;
-                tr.innerHTML = '<td>' + escapeHtml(label)
+                tr.innerHTML = '<td><span class="ponos-stats-user-label">'
+                    + renderUserAvatarHtml(row.email)
+                    + '<span>' + escapeHtml(label) + '</span></span>'
                     + '</td><td>' + escapeHtml(String(row.created || 0))
                     + '</td><td>' + escapeHtml(String(row.handled || 0)) + '</td>';
                 tbody.appendChild(tr);
@@ -410,7 +483,7 @@
         const legend = document.createElement('ul');
         legend.className = 'ponos-stats-legend';
         const chartCategories = categories.map(function (category) {
-            const colors = colorFromText(category.label);
+            const colors = categoryColorFromText(category.label);
             const item = document.createElement('li');
             item.innerHTML = '<span class="ponos-stats-legend-swatch" style="background:' + escapeHtml(colors.dark) + '"></span>'
                 + '<span>' + escapeHtml(category.label) + '</span>'
@@ -464,6 +537,30 @@
         if (el.statsModal) {
             el.statsModal.hidden = true;
             el.statsModal.setAttribute('aria-hidden', 'true');
+        }
+    }
+
+    async function setDevAdmin(enabled) {
+        const body = new URLSearchParams();
+        body.set('action', 'set_dev_admin');
+        body.set('admin', enabled ? '1' : '0');
+        const response = await fetch(apiUrl('set_dev_admin'), { method: 'POST', body: body, credentials: 'same-origin' });
+        const data = await response.json();
+        if (!data.ok) {
+            showAlert(data.error || i18n['ponos.error.save_failed']);
+            if (el.devAdminToggle) {
+                el.devAdminToggle.checked = !enabled;
+            }
+            return;
+        }
+
+        state.isAdmin = !!data.is_admin;
+        await loadNavigation({ applyPrefs: false });
+        updateGroupAdminButton();
+        renderSidebar();
+        await loadTasks();
+        if (state.activeTask) {
+            renderTaskDetail();
         }
     }
 
@@ -525,9 +622,30 @@
         return groups.find(function (item) { return item.id === state.group; }) || null;
     }
 
+    function groupHasTaskAccess(group) {
+        group = group || currentGroup();
+        if (!group || group.virtual) {
+            return true;
+        }
+
+        return group.has_task_access !== false;
+    }
+
+    function taskCanEdit(task) {
+        if (!task) {
+            return false;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(task, 'can_edit')) {
+            return !!task.can_edit;
+        }
+
+        return groupHasTaskAccess();
+    }
+
     function editableGroups() {
         return ((state.navigation && state.navigation.groups) || []).filter(function (group) {
-            return !group.virtual && group.can_create_tasks !== false;
+            return !group.virtual && group.can_create_tasks !== false && group.has_task_access !== false;
         });
     }
 
@@ -570,6 +688,29 @@
             hash = text.charCodeAt(i) + ((hash << 5) - hash);
         }
         return hash;
+    }
+
+    function categoryColorFromText(text) {
+        const normalized = String(text || '').toLowerCase().trim();
+        if (normalized === '') {
+            return colorFromText('');
+        }
+        const hash = hashTextForColor(normalized);
+        const hue = Math.abs(hash * 137.508) % 360;
+        const saturation = 68 + (Math.abs(hash >> 4) % 14);
+        const lightness = 46 + (Math.abs(hash >> 10) % 16);
+        const borderLightness = Math.max(lightness - 6, 40);
+        const darkLightness = Math.max(lightness - 20, 30);
+        const chipTextColor = lightness >= 58 ? '#1e293b' : '#ffffff';
+        const hueText = String(Math.round(hue * 100) / 100);
+        return {
+            border: 'hsl(' + hueText + ', ' + saturation + '%, ' + borderLightness + '%)',
+            dark: 'hsl(' + hueText + ', ' + saturation + '%, ' + darkLightness + '%)',
+            light: 'hsl(' + hueText + ', ' + saturation + '%, ' + lightness + '%)',
+            chipBackground: 'hsl(' + hueText + ', ' + saturation + '%, ' + lightness + '%)',
+            cardBackground: 'hsl(' + hueText + ', ' + Math.min(saturation, 48) + '%, 96%)',
+            chipTextColor: chipTextColor,
+        };
     }
 
     function colorFromText(text) {
@@ -973,14 +1114,18 @@
         el.empty.hidden = true;
         el.board.hidden = false;
         el.groupTitle.textContent = group ? group.name : state.group;
-        el.groupSubtitle.textContent = isMyTasksGroup(state.group)
-            ? i18n['ponos.group.my_tasks_hint']
-            : '';
+        if (isMyTasksGroup(state.group)) {
+            el.groupSubtitle.textContent = i18n['ponos.group.my_tasks_hint'];
+        } else if (group && group.has_task_access === false) {
+            el.groupSubtitle.textContent = i18n['ponos.group.read_only_hint'];
+        } else {
+            el.groupSubtitle.textContent = '';
+        }
         updateGroupPinButton();
         updateGroupAdminButton();
         updateGroupStatsButton();
 
-        const canCreate = group && group.can_create_tasks !== false && !group.virtual;
+        const canCreate = group && group.can_create_tasks !== false && !group.virtual && groupHasTaskAccess(group);
         el.newTask.hidden = !canCreate;
 
         await loadCategories();
@@ -1077,7 +1222,7 @@
         categories.forEach(function (category) {
             const item = document.createElement('li');
             item.className = 'ponos-category-admin-item';
-            const colors = colorFromText(category.name);
+            const colors = categoryColorFromText(category.name);
             const label = document.createElement('div');
             label.innerHTML = '<span class="ponos-category-swatch" style="background:' + escapeHtml(colors.dark) + '"></span>'
                 + escapeHtml(category.name);
@@ -1174,8 +1319,10 @@
                     const item = document.createElement('li');
                     item.className = 'ponos-access-member-item';
                     const label = document.createElement('div');
+                    label.className = 'ponos-access-member-label';
                     const displayName = userNameByEmail(email);
-                    label.textContent = displayName !== '' ? displayName + ' (' + email + ')' : email;
+                    const memberLabel = displayName !== '' ? displayName + ' (' + email + ')' : email;
+                    label.innerHTML = renderUserAvatarHtml(email) + '<span>' + escapeHtml(memberLabel) + '</span>';
 
                     item.appendChild(label);
                     if (String(email).toLowerCase() !== currentUserEmail()) {
@@ -1665,14 +1812,14 @@
         card.className = 'ponos-card';
         card.dataset.taskId = task.id;
 
-        const colors = task.colors || colorFromText(taskColorKey(task));
+        const colors = task.colors || categoryColorFromText(taskColorKey(task));
         const total = Number(task.checklist_total || 0);
         const done = Number(task.checklist_done || 0);
         const progress = total > 0 ? Math.round((done / total) * 100) : 0;
 
         const bar = document.createElement('div');
         bar.className = 'ponos-card-bar';
-        bar.draggable = true;
+        bar.draggable = groupHasTaskAccess();
         bar.style.setProperty('--ponos-bar-dark', colors.dark);
         bar.style.setProperty('--ponos-bar-light', colors.light);
         if (total > 0) {
@@ -1722,7 +1869,6 @@
             const dueClass = dueDateUrgencyClass(task.due_date, task.status);
             metaHtml += '<div' + (dueClass ? ' class="' + dueClass + '"' : '') + '>' + escapeHtml(formatDisplayDate(task.due_date)) + '</div>';
         }
-        metaHtml += (total > 0 ? '<div>' + done + '/' + total + '</div>' : '');
         meta.innerHTML = metaHtml;
         if (metaHtml !== '') {
             main.appendChild(meta);
@@ -1735,7 +1881,7 @@
             const assignee = document.createElement('div');
             assignee.className = 'ponos-card-assignee';
 
-            if (task.can_remind) {
+            if (task.can_remind && taskCanEdit(task)) {
                 const bell = document.createElement('button');
                 bell.type = 'button';
                 bell.className = 'ponos-card-remind-bell is-available';
@@ -1750,17 +1896,21 @@
 
             const assigneeText = document.createElement('div');
             assigneeText.className = 'ponos-card-assignee-text';
+            const assigneeLabel = document.createElement('div');
+            assigneeLabel.className = 'ponos-card-assignee-label';
+            assigneeLabel.innerHTML = renderUserAvatarHtml(assigneeEmail);
             const displayName = userNameByEmail(assigneeEmail);
             if (displayName !== '') {
                 const nameEl = document.createElement('span');
                 nameEl.className = 'ponos-card-assignee-name';
                 nameEl.textContent = displayName;
-                assigneeText.appendChild(nameEl);
+                assigneeLabel.appendChild(nameEl);
             }
             const emailEl = document.createElement('span');
             emailEl.className = 'ponos-card-assignee-email';
             emailEl.textContent = assigneeEmail;
-            assigneeText.appendChild(emailEl);
+            assigneeLabel.appendChild(emailEl);
+            assigneeText.appendChild(assigneeLabel);
             assignee.appendChild(assigneeText);
             body.appendChild(assignee);
         }
@@ -1791,6 +1941,9 @@
     async function onColumnDrop(event) {
         event.preventDefault();
         event.currentTarget.classList.remove('is-drop-target');
+        if (!groupHasTaskAccess()) {
+            return;
+        }
         const status = event.currentTarget.dataset.status;
         const taskId = state.draggedTaskId || event.dataTransfer.getData('text/plain');
         if (!taskId || !status) {
@@ -1872,7 +2025,10 @@
         el.detailMeta.textContent = metaParts.join(' · ');
 
         if (el.unarchiveTask) {
-            el.unarchiveTask.hidden = !task.is_archived;
+            el.unarchiveTask.hidden = !task.is_archived || !taskCanEdit(task);
+        }
+        if (el.editTask) {
+            el.editTask.hidden = !taskCanEdit(task);
         }
 
         if (state.editMode) {
@@ -1888,8 +2044,9 @@
 
         if ((task.checklist || []).length > 0) {
             mainHtml += '<div><strong>' + escapeHtml(i18n['ponos.field.checklist']) + '</strong><div class="ponos-checklist">';
+            const checklistDisabled = taskCanEdit(task) ? '' : ' disabled';
             task.checklist.forEach(function (item) {
-                mainHtml += '<label class="ponos-checklist-item"><input type="checkbox" data-checklist-id="' + item.id + '"' + (item.done ? ' checked' : '') + '><span>' + escapeHtml(item.label) + '</span></label>';
+                mainHtml += '<label class="ponos-checklist-item"><input type="checkbox" data-checklist-id="' + item.id + '"' + (item.done ? ' checked' : '') + checklistDisabled + '><span>' + escapeHtml(item.label) + '</span></label>';
             });
             mainHtml += '</div></div>';
         }
@@ -1897,7 +2054,7 @@
         if ((task.attachments || []).length > 0) {
             mainHtml += '<div class="ponos-attachments"><strong>' + escapeHtml(i18n['ponos.field.attachments']) + '</strong>';
             task.attachments.forEach(function (file) {
-                mainHtml += '<a href="' + attachmentUrl(file.id, task.id) + '">' + escapeHtml(file.filename) + '</a>';
+                mainHtml += renderAttachmentLinkHtml(file, task.id);
             });
             mainHtml += '</div>';
         }
@@ -1910,12 +2067,14 @@
             chatHtml += renderMessageHtml(message, task.id);
         });
         chatHtml += '</div>';
-        chatHtml += '<div class="ponos-message-compose">';
-        chatHtml += '<label class="ponos-compose-label" for="ponos-message-text">' + escapeHtml(i18n['ponos.field.message']) + '</label>';
-        chatHtml += '<textarea id="ponos-message-text" class="ponos-message-input" rows="1"></textarea>';
-        chatHtml += '<label class="ponos-compose-label" for="ponos-message-files">' + escapeHtml(i18n['ponos.field.attachments']) + '</label>';
-        chatHtml += '<input type="file" id="ponos-message-files" multiple>';
-        chatHtml += '<button type="button" id="ponos-send-message" class="ponos-btn">' + escapeHtml(i18n['ponos.btn.send']) + '</button></div>';
+        if (taskCanEdit(task)) {
+            chatHtml += '<div class="ponos-message-compose">';
+            chatHtml += '<label class="ponos-compose-label" for="ponos-message-text">' + escapeHtml(i18n['ponos.field.message']) + '</label>';
+            chatHtml += '<textarea id="ponos-message-text" class="ponos-message-input" rows="1"></textarea>';
+            chatHtml += '<label class="ponos-compose-label" for="ponos-message-files">' + escapeHtml(i18n['ponos.field.attachments']) + '</label>';
+            chatHtml += '<input type="file" id="ponos-message-files" multiple>';
+            chatHtml += '<button type="button" id="ponos-send-message" class="ponos-btn">' + escapeHtml(i18n['ponos.btn.send']) + '</button></div>';
+        }
         chatHtml += '</div>';
 
         el.detailBody.innerHTML = '<div class="ponos-detail-layout">'
@@ -1937,6 +2096,7 @@
         }
 
         wireMessageTextarea();
+        wireAttachmentLinks(el.detailBody);
         scrollMessagesToEnd();
     }
 
@@ -1969,22 +2129,53 @@
         });
     }
 
+    function renderMessageAuthorHtml(email, message) {
+        const normalized = String(email || '').toLowerCase().trim();
+        if (normalized === '') {
+            return '';
+        }
+
+        const emailColors = (message && message.colors) || colorFromText(normalized);
+        const displayName = userNameByEmail(normalized);
+        const authorClass = displayName !== '' ? 'ponos-message-author' : 'ponos-message-author ponos-message-author--email-only';
+        let html = '<div class="ponos-message-side"><div class="' + authorClass + '">';
+        html += renderUserAvatarHtml(normalized, { message: message, className: 'ponos-user-avatar--author' });
+        if (displayName !== '') {
+            html += '<span class="ponos-message-author-name" style="background:' + escapeHtml(emailColors.chipBackground)
+                + ';color:' + escapeHtml(emailColors.chipTextColor) + '">' + escapeHtml(displayName) + '</span>';
+            html += '<span class="ponos-message-author-email">' + escapeHtml(normalized) + '</span>';
+        } else {
+            html += '<span class="ponos-message-author-email">' + escapeHtml(normalized) + '</span>';
+        }
+        html += '</div></div>';
+        return html;
+    }
+
     function renderMessageHtml(message, taskId) {
         const emailColors = message.colors || colorFromText(message.email || '');
         const isSystem = message.kind === 'system';
-        let html = '<article class="ponos-message' + (isSystem ? ' ponos-message--system' : '') + '" style="border-color:' + escapeHtml(emailColors.border) + ';background:' + escapeHtml(emailColors.cardBackground) + '">';
+        const email = String(message.email || '').trim();
+        let html = '';
         if (!isSystem) {
-            html += '<div class="ponos-message-meta"><span class="ponos-message-email" style="background:' + escapeHtml(emailColors.chipBackground) + ';color:' + escapeHtml(emailColors.chipTextColor) + '">' + escapeHtml(message.email || '') + '</span><span>' + escapeHtml(formatTimestamp(message.created_at)) + '</span></div>';
+            html += '<div class="ponos-message-row">';
+            html += renderMessageAuthorHtml(email, message);
         }
-        html += '<div>' + escapeHtml(message.text || '') + '</div>';
+        html += '<article class="ponos-message' + (isSystem ? ' ponos-message--system' : '') + '" style="border-color:' + escapeHtml(emailColors.border) + ';background:' + escapeHtml(emailColors.cardBackground) + '">';
+        if (!isSystem) {
+            html += '<div class="ponos-message-meta"><span>' + escapeHtml(formatTimestamp(message.created_at)) + '</span></div>';
+        }
+        html += '<div>' + formatDescriptionHtml(message.text || '') + '</div>';
         if ((message.attachments || []).length > 0) {
             html += '<div class="ponos-attachments">';
             message.attachments.forEach(function (file) {
-                html += '<a href="' + attachmentUrl(file.id, taskId) + '">' + escapeHtml(file.filename) + '</a>';
+                html += renderAttachmentLinkHtml(file, taskId);
             });
             html += '</div>';
         }
         html += '</article>';
+        if (!isSystem) {
+            html += '</div>';
+        }
         return html;
     }
 
@@ -2189,6 +2380,197 @@
         }).toString();
     }
 
+    function attachmentPreviewKind(filename, mime) {
+        const name = String(filename || '').toLowerCase();
+        const extension = name.includes('.') ? name.split('.').pop() : name;
+        const type = String(mime || '').toLowerCase();
+        const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'avif', 'tif', 'tiff', 'heic', 'heif', 'apng'];
+
+        if (type.indexOf('image/') === 0 || imageExtensions.indexOf(extension) >= 0) {
+            return 'image';
+        }
+        if (extension === 'md' || extension === 'markdown') {
+            return 'markdown';
+        }
+        if (extension === 'csv' || extension === 'tsv') {
+            return 'csv';
+        }
+
+        const codeExtensions = [
+            'js', 'ts', 'jsx', 'tsx', 'mjs', 'cjs', 'php', 'py', 'rb', 'go', 'rs', 'java', 'kt', 'kts', 'cs', 'cpp',
+            'cc', 'cxx', 'c', 'h', 'hpp', 'hh', 'css', 'scss', 'sass', 'less', 'html', 'htm', 'xml', 'xsl', 'xslt',
+            'sql', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini', 'conf', 'cfg',
+            'env', 'vue', 'svelte', 'swift', 'dart', 'lua', 'r', 'pl', 'pm', 'asm', 'zig', 'vb', 'fs', 'fsx', 'clj',
+            'ex', 'exs', 'erl', 'hrl', 'gradle', 'groovy', 'tf', 'tfvars', 'dockerfile', 'makefile', 'cmake', 'bat',
+            'cmd', 'reg', 'properties',
+        ];
+        const basename = name.split('/').pop();
+        if (codeExtensions.indexOf(extension) >= 0 || ['dockerfile', 'makefile', 'gemfile', 'rakefile', 'vagrantfile'].indexOf(basename) >= 0) {
+            return 'code';
+        }
+
+        const textExtensions = ['txt', 'log', 'text', 'rst', 'rtf', 'nfo'];
+        if (textExtensions.indexOf(extension) >= 0 || type.indexOf('text/') === 0) {
+            return 'text';
+        }
+        if (['application/json', 'application/xml', 'application/javascript'].indexOf(type) >= 0) {
+            return 'code';
+        }
+
+        return '';
+    }
+
+    function renderAttachmentLinkHtml(file, taskId) {
+        const filename = String(file.filename || '');
+        const downloadUrl = attachmentUrl(file.id, taskId);
+        const previewKind = attachmentPreviewKind(filename, file.mime);
+        if (previewKind) {
+            return '<button type="button" class="ponos-attachment-link ponos-attachment-preview"'
+                + ' data-attachment-id="' + escapeAttr(String(file.id)) + '"'
+                + ' data-task-id="' + escapeAttr(String(taskId || state.task || '')) + '"'
+                + ' data-filename="' + escapeAttr(filename) + '"'
+                + ' data-mime="' + escapeAttr(String(file.mime || '')) + '">'
+                + escapeHtml(filename) + '</button>';
+        }
+
+        return '<a class="ponos-attachment-link" href="' + escapeHtml(downloadUrl) + '">' + escapeHtml(filename) + '</a>';
+    }
+
+    function hideAttachmentPreview() {
+        if (!el.previewModal) {
+            return;
+        }
+        el.previewModal.hidden = true;
+        el.previewModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function renderAttachmentPreviewContent(data) {
+        const kind = String(data.preview_kind || '');
+        if (kind === 'image') {
+            const imageUrl = apiUrl('view_attachment', {
+                group: state.group,
+                attachment_id: data.attachment_id,
+                task: data.task_id || state.task,
+            }).toString();
+            return '<img class="ponos-preview-image" src="' + escapeHtml(imageUrl) + '" alt="' + escapeHtml(data.filename || '') + '">';
+        }
+
+        if (kind === 'markdown') {
+            if (window.marked && typeof window.marked.parse === 'function') {
+                if (typeof window.marked.setOptions === 'function') {
+                    window.marked.setOptions({ gfm: true, breaks: true });
+                }
+                let html = window.marked.parse(String(data.content || ''));
+                if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
+                    html = window.DOMPurify.sanitize(html);
+                }
+                return '<div class="ponos-preview-markdown">' + html + '</div>';
+            }
+            return '<pre class="ponos-preview-text">' + escapeHtml(String(data.content || '')) + '</pre>';
+        }
+
+        if (kind === 'csv') {
+            const headers = Array.isArray(data.headers) ? data.headers : [];
+            const rows = Array.isArray(data.rows) ? data.rows : [];
+            let tableHtml = '<div class="ponos-preview-table-wrap"><table class="ponos-preview-table"><thead><tr>';
+            headers.forEach(function (header) {
+                tableHtml += '<th>' + escapeHtml(header) + '</th>';
+            });
+            tableHtml += '</tr></thead><tbody>';
+            rows.forEach(function (row) {
+                tableHtml += '<tr>';
+                headers.forEach(function (_header, index) {
+                    tableHtml += '<td>' + escapeHtml(String((row || [])[index] || '')) + '</td>';
+                });
+                tableHtml += '</tr>';
+            });
+            tableHtml += '</tbody></table></div>';
+            return tableHtml;
+        }
+
+        const content = String(data.content || '');
+        if (kind === 'code') {
+            const language = String(data.language || '');
+            let highlighted = '';
+            if (window.hljs) {
+                try {
+                    highlighted = language && window.hljs.getLanguage(language)
+                        ? window.hljs.highlight(content, { language: language }).value
+                        : window.hljs.highlightAuto(content).value;
+                } catch (error) {
+                    highlighted = escapeHtml(content);
+                }
+            } else {
+                highlighted = escapeHtml(content);
+            }
+            return '<pre class="ponos-preview-code"><code class="hljs">' + highlighted + '</code></pre>';
+        }
+
+        return '<pre class="ponos-preview-text">' + escapeHtml(content) + '</pre>';
+    }
+
+    async function openAttachmentPreview(attachmentId, taskId, filename) {
+        if (!el.previewModal || !el.previewBody) {
+            return;
+        }
+
+        const resolvedTaskId = taskId || state.task || '';
+        el.previewModal.hidden = false;
+        el.previewModal.setAttribute('aria-hidden', 'false');
+        if (el.previewTitle) {
+            el.previewTitle.textContent = filename || i18n['ponos.attachment.preview_title'];
+        }
+        el.previewBody.innerHTML = '<div class="ponos-preview-loading">…</div>';
+
+        const downloadUrl = attachmentUrl(attachmentId, resolvedTaskId);
+        if (el.previewDownload) {
+            el.previewDownload.href = downloadUrl;
+            el.previewDownload.setAttribute('download', filename || '');
+        }
+
+        try {
+            const response = await fetch(apiFetchUrl('preview_attachment', {
+                group: state.group,
+                attachment_id: attachmentId,
+                task: resolvedTaskId,
+            }), {
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+            const data = await response.json();
+            if (!data.ok) {
+                el.previewBody.innerHTML = '<div class="ponos-preview-error">' + escapeHtml(data.error || i18n['ponos.error.load_failed']) + '</div>';
+                return;
+            }
+
+            data.attachment_id = attachmentId;
+            data.task_id = resolvedTaskId;
+            el.previewBody.innerHTML = renderAttachmentPreviewContent(data);
+        } catch (error) {
+            el.previewBody.innerHTML = '<div class="ponos-preview-error">' + escapeHtml(i18n['ponos.error.load_failed']) + '</div>';
+        }
+    }
+
+    function wireAttachmentLinks(root) {
+        if (!root) {
+            return;
+        }
+
+        root.querySelectorAll('.ponos-attachment-preview').forEach(function (button) {
+            if (button.dataset.previewWired === '1') {
+                return;
+            }
+            button.dataset.previewWired = '1';
+            button.addEventListener('click', function () {
+                openAttachmentPreview(
+                    button.dataset.attachmentId,
+                    button.dataset.taskId,
+                    button.dataset.filename || ''
+                );
+            });
+        });
+    }
+
     function formatTimestamp(value) {
         if (!value) {
             return '';
@@ -2217,7 +2599,7 @@
     }
 
     function openNewTaskForm() {
-        if (isMyTasksGroup(state.group)) {
+        if (isMyTasksGroup(state.group) || !groupHasTaskAccess()) {
             return;
         }
         state.activeTask = { title: '', description: '', checklist: [''] };
@@ -2375,6 +2757,11 @@
                 }
             });
         }
+        if (el.devAdminToggle) {
+            el.devAdminToggle.addEventListener('change', function () {
+                setDevAdmin(el.devAdminToggle.checked);
+            });
+        }
         if (el.groupPin) {
             el.groupPin.addEventListener('click', function (event) {
                 event.stopPropagation();
@@ -2385,6 +2772,35 @@
             el.groupAdmin.addEventListener('click', function (event) {
                 event.stopPropagation();
                 showCategoryAdminModal();
+            });
+        }
+        if (el.groupStats) {
+            el.groupStats.addEventListener('click', function (event) {
+                event.stopPropagation();
+                openStatsModal();
+            });
+        }
+        if (el.statsClose) {
+            el.statsClose.addEventListener('click', hideStatsModal);
+        }
+        if (el.statsModal) {
+            el.statsModal.addEventListener('click', function (event) {
+                if (event.target === el.statsModal) {
+                    hideStatsModal();
+                }
+            });
+        }
+        if (el.previewClose) {
+            el.previewClose.addEventListener('click', hideAttachmentPreview);
+        }
+        if (el.previewCancel) {
+            el.previewCancel.addEventListener('click', hideAttachmentPreview);
+        }
+        if (el.previewModal) {
+            el.previewModal.addEventListener('click', function (event) {
+                if (event.target === el.previewModal) {
+                    hideAttachmentPreview();
+                }
             });
         }
         if (el.adminTabCategories) {

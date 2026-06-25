@@ -30,10 +30,61 @@ function ponos_current_user_email(): string
     return $email !== '' ? $email : PONOS_DEFAULT_USER_EMAIL;
 }
 
+function ponos_is_localhost_request(): bool
+{
+    if (function_exists('is_trusted_requester')) {
+        return is_trusted_requester();
+    }
+
+    if (PHP_SAPI === 'cli') {
+        return false;
+    }
+
+    $host = strtolower(trim((string) ($_SERVER['HTTP_HOST'] ?? '')));
+    if ($host === '') {
+        return false;
+    }
+
+    $host = preg_replace('/:\d+$/', '', $host);
+
+    return in_array($host, ['localhost', '127.0.0.1', '[::1]'], true);
+}
+
+function ponos_ensure_session(): void
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        @session_start();
+    }
+}
+
+function ponos_localhost_admin_enabled(): bool
+{
+    if (!ponos_is_localhost_request()) {
+        return false;
+    }
+
+    ponos_ensure_session();
+    if (!array_key_exists('ponos_dev_admin', $_SESSION)) {
+        $_SESSION['ponos_dev_admin'] = true;
+    }
+
+    return !empty($_SESSION['ponos_dev_admin']);
+}
+
+function ponos_set_localhost_admin(bool $enabled): void
+{
+    if (!ponos_is_localhost_request()) {
+        return;
+    }
+
+    ponos_ensure_session();
+    $_SESSION['ponos_dev_admin'] = $enabled;
+}
+
 function ponos_current_user_is_admin(): bool
 {
-    if (function_exists('is_trusted_requester') && is_trusted_requester()) {
-        return true;
+    if (ponos_is_localhost_request()) {
+        return ponos_localhost_admin_enabled();
     }
 
     return !empty($_SESSION['user']['admin']);
@@ -113,6 +164,92 @@ function ponos_color_from_text(string $text): array
         'cardBackground' => 'hsl(' . $hue . ', ' . min($saturation, 48) . '%, 96%)',
         'chipTextColor' => $chipTextColor,
     ];
+}
+
+function ponos_category_color_from_text(string $text): array
+{
+    $normalized = strtolower(trim($text));
+    if ($normalized === '') {
+        return ponos_color_from_text('');
+    }
+
+    $hash = ponos_hash_text_for_color($normalized);
+    $hue = fmod(abs($hash) * 137.508, 360.0);
+    $saturation = 68 + (abs($hash >> 4) % 14);
+    $lightness = 46 + (abs($hash >> 10) % 16);
+    $borderLightness = max($lightness - 6, 40);
+    $darkLightness = max($lightness - 20, 30);
+    $chipTextColor = $lightness >= 58 ? '#1e293b' : '#ffffff';
+
+    return [
+        'border' => 'hsl(' . round($hue, 2) . ', ' . $saturation . '%, ' . $borderLightness . '%)',
+        'dark' => 'hsl(' . round($hue, 2) . ', ' . $saturation . '%, ' . $darkLightness . '%)',
+        'light' => 'hsl(' . round($hue, 2) . ', ' . $saturation . '%, ' . $lightness . '%)',
+        'chipBackground' => 'hsl(' . round($hue, 2) . ', ' . $saturation . '%, ' . $lightness . '%)',
+        'cardBackground' => 'hsl(' . round($hue, 2) . ', ' . min($saturation, 48) . '%, 96%)',
+        'chipTextColor' => $chipTextColor,
+    ];
+}
+
+function ponos_parse_hsl_color(string $hsl): ?array
+{
+    if (!preg_match('/hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/', $hsl, $matches)) {
+        return null;
+    }
+
+    return [
+        (float) $matches[1],
+        (float) $matches[2],
+        (float) $matches[3],
+    ];
+}
+
+function ponos_hsl_to_rgb(float $hue, float $saturation, float $lightness): array
+{
+    $saturation /= 100;
+    $lightness /= 100;
+    $chroma = (1 - abs(2 * $lightness - 1)) * $saturation;
+    $huePrime = fmod($hue, 360.0) / 60.0;
+    $second = $chroma * (1 - abs(fmod($huePrime, 2) - 1));
+
+    $red = $green = $blue = 0.0;
+    if ($huePrime >= 0 && $huePrime < 1) {
+        $red = $chroma;
+        $green = $second;
+    } elseif ($huePrime < 2) {
+        $red = $second;
+        $green = $chroma;
+    } elseif ($huePrime < 3) {
+        $green = $chroma;
+        $blue = $second;
+    } elseif ($huePrime < 4) {
+        $green = $second;
+        $blue = $chroma;
+    } elseif ($huePrime < 5) {
+        $red = $second;
+        $blue = $chroma;
+    } else {
+        $red = $chroma;
+        $blue = $second;
+    }
+
+    $match = $lightness - ($chroma / 2);
+
+    return [
+        (int) round(($red + $match) * 255),
+        (int) round(($green + $match) * 255),
+        (int) round(($blue + $match) * 255),
+    ];
+}
+
+function ponos_color_dark_rgb(array $colors): array
+{
+    $hsl = ponos_parse_hsl_color((string) ($colors['dark'] ?? ''));
+    if ($hsl === null) {
+        return [100, 116, 139];
+    }
+
+    return ponos_hsl_to_rgb($hsl[0], $hsl[1], $hsl[2]);
 }
 
 function ponos_status_label(string $status): string

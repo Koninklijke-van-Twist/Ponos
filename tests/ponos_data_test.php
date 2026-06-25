@@ -47,15 +47,23 @@ ponos_test('ponos_format_display_date formats ISO dates readably', function (): 
     assert_true(str_contains(strtolower($formatted), 'jun'));
 });
 
-ponos_test('ponos_current_user_is_admin is true for trusted requester', function (): void {
-    if (!function_exists('is_trusted_requester')) {
+ponos_test('ponos_localhost admin toggle overrides admin status', function (): void {
+    if (!ponos_is_localhost_request()) {
         return;
     }
 
-    $wasTrusted = is_trusted_requester();
-    if (!$wasTrusted) {
+    ponos_set_localhost_admin(true);
+    assert_true(ponos_current_user_is_admin());
+    ponos_set_localhost_admin(false);
+    assert_false(ponos_current_user_is_admin());
+    ponos_set_localhost_admin(true);
+});
+
+ponos_test('ponos_current_user_is_admin defaults true on localhost', function (): void {
+    if (!ponos_is_localhost_request()) {
         return;
     }
 
+    ponos_set_localhost_admin(true);
     assert_true(ponos_current_user_is_admin());
 });

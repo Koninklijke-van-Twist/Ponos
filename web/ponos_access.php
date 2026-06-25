@@ -50,14 +50,6 @@ function ponos_user_has_group_access(string $userEmail, string $groupId, ?bool $
         return true;
     }
 
-    if ($isAdmin === null) {
-        $isAdmin = ponos_current_user_is_admin();
-    }
-
-    if ($isAdmin) {
-        return true;
-    }
-
     $userEmail = strtolower(trim($userEmail));
     if ($userEmail === '') {
         return false;
@@ -75,6 +67,46 @@ function ponos_user_has_group_access(string $userEmail, string $groupId, ?bool $
     return (bool) $stmt->fetchColumn();
 }
 
+function ponos_user_can_view_group(string $userEmail, string $groupId, ?bool $isAdmin = null): bool
+{
+    if (trim($groupId) === PONOS_GROUP_MY_TASKS) {
+        return true;
+    }
+
+    if ($isAdmin === null) {
+        $isAdmin = ponos_current_user_is_admin();
+    }
+
+    if ($isAdmin) {
+        return true;
+    }
+
+    return ponos_user_has_group_access($userEmail, $groupId, false);
+}
+
+function ponos_task_can_edit(array $task, string $userEmail): bool
+{
+    $groupId = trim((string) ($task['group_id'] ?? $task['home_group_id'] ?? ''));
+    if ($groupId === '' || $groupId === PONOS_GROUP_MY_TASKS) {
+        return false;
+    }
+
+    return ponos_user_has_group_access($userEmail, $groupId, false);
+}
+
+function ponos_apply_task_permissions(array $tasks, string $userEmail): array
+{
+    foreach ($tasks as $index => $task) {
+        if (!is_array($task)) {
+            continue;
+        }
+
+        $tasks[$index]['can_edit'] = ponos_task_can_edit($task, $userEmail);
+    }
+
+    return $tasks;
+}
+
 function ponos_filter_groups_by_user_access(array $groups, string $userEmail, ?bool $isAdmin = null): array
 {
     if ($isAdmin === null) {
@@ -88,7 +120,7 @@ function ponos_filter_groups_by_user_access(array $groups, string $userEmail, ?b
             continue;
         }
 
-        if (ponos_user_has_group_access($userEmail, (string) ($group['id'] ?? ''), $isAdmin)) {
+        if ($isAdmin || ponos_user_has_group_access($userEmail, (string) ($group['id'] ?? ''), false)) {
             $filtered[] = $group;
         }
     }
@@ -178,6 +210,7 @@ function ponos_enrich_group_for_client(array $group, string $userEmail, ?bool $i
 
     $groupId = (string) ($group['id'] ?? '');
     $group['open_access'] = ponos_group_has_open_access($groupId);
+    $group['has_task_access'] = ponos_user_has_group_access($userEmail, $groupId, false);
     $group['member_emails'] = $group['open_access']
         ? []
         : ponos_list_group_member_emails($groupId);

@@ -46,6 +46,9 @@ $i18nKeys = [
     'ponos.stats.title', 'ponos.stats.btn', 'ponos.stats.user', 'ponos.stats.created', 'ponos.stats.handled',
     'ponos.stats.on_time_title', 'ponos.stats.on_time_hint', 'ponos.stats.on_time_none',
     'ponos.stats.categories_title', 'ponos.stats.empty', 'ponos.stats.tasks',
+    'ponos.error.group_task_access_denied', 'ponos.group.read_only_hint',
+    'ponos.attachment.preview_title', 'ponos.btn.download',
+    'ponos.error.attachment_preview_unsupported', 'ponos.error.attachment_preview_too_large',
 ];
 $i18n = [];
 foreach ($i18nKeys as $key) {
@@ -69,6 +72,13 @@ foreach ($i18nKeys as $key) {
             padding: 14px 18px; border-bottom: 3px solid var(--kvt-main-blue); background: #fff;
         }
         .ponos-topbar-left { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+        .ponos-topbar-tools { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+        .ponos-dev-admin-toggle {
+            display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+            font-size: 0.82rem; font-weight: 700; color: #92400e; user-select: none;
+            background: #fffbeb; border: 1px solid #f59e0b; border-radius: 999px; padding: 6px 12px;
+        }
+        .ponos-dev-admin-toggle input { width: 1rem; height: 1rem; margin: 0; cursor: pointer; }
         .ponos-topbar img { max-height: 42px; width: auto; }
         .ponos-topbar h1 { margin: 0; font-size: 1.35rem; color: var(--kvt-perkins-blue); }
         .ponos-body { display: grid; grid-template-columns: 280px 1fr; flex: 1; min-height: 0; }
@@ -322,6 +332,21 @@ foreach ($i18nKeys as $key) {
             display: flex; align-items: flex-end; justify-content: flex-end; gap: 6px; position: relative;
         }
         .ponos-card-assignee-text { text-align: right; min-width: 0; }
+        .ponos-card-assignee-label {
+            display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0;
+        }
+        .ponos-user-avatar {
+            width: 30px; height: 30px; flex: 0 0 30px; display: block;
+            border: 1px solid; border-radius: 4px; background: #fff;
+            image-rendering: pixelated; image-rendering: crisp-edges; object-fit: none;
+        }
+        .ponos-user-label {
+            display: inline-flex; align-items: center; gap: 8px; min-width: 0;
+        }
+        .ponos-user-label-text { min-width: 0; }
+        .ponos-user-footer-label {
+            display: flex; align-items: center; gap: 8px; min-width: 0;
+        }
         .ponos-card-remind-bell {
             border: 0; background: transparent; cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 2px 2px;
             color: var(--kvt-perkins-blue); opacity: 0; transition: opacity 0.15s ease; flex-shrink: 0;
@@ -447,8 +472,70 @@ foreach ($i18nKeys as $key) {
             flex: 1 1 0;
             min-height: 0;
             overflow-y: auto;
-            padding-right: 4px;
+            overflow-x: visible;
+            padding: 0 4px 0 12px;
             align-content: start;
+        }
+        .ponos-message-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 0;
+            overflow: visible;
+        }
+        .ponos-message-side {
+            flex: 0 0 auto;
+            margin-right: -9px;
+            padding-top: 6px;
+            position: relative;
+            z-index: 2;
+        }
+        .ponos-message-author {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            column-gap: 8px;
+            row-gap: 1px;
+            align-items: center;
+        }
+        .ponos-message-author .ponos-user-avatar--author {
+            grid-row: 1 / -1;
+            grid-column: 1;
+            width: 38px;
+            height: 38px;
+            flex: 0 0 38px;
+            justify-self: center;
+            align-self: center;
+        }
+        .ponos-message-author--email-only .ponos-user-avatar--author {
+            width: 30px;
+            height: 30px;
+            flex-basis: 30px;
+        }
+        .ponos-message-author-name {
+            grid-column: 2;
+            grid-row: 1;
+            font-weight: 700;
+            font-size: 0.82rem;
+            line-height: 1.25;
+            padding: 1px 8px;
+            border-radius: 999px;
+            width: fit-content;
+            max-width: 100%;
+        }
+        .ponos-message-author-email {
+            grid-column: 2;
+            grid-row: 2;
+            font-size: 0.75rem;
+            line-height: 1.25;
+            color: var(--kvt-muted);
+            word-break: break-all;
+        }
+        .ponos-message-author--email-only .ponos-message-author-email {
+            grid-row: 1;
+            font-size: 0.82rem;
+        }
+        .ponos-message-row .ponos-message {
+            flex: 1 1 auto;
+            min-width: 0;
         }
         .ponos-message {
             border: 1px solid var(--kvt-line); border-radius: 12px; padding: 10px 12px;
@@ -457,6 +544,8 @@ foreach ($i18nKeys as $key) {
         .ponos-message-email {
             display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 700;
         }
+        .ponos-stats-user-label { display: inline-flex; align-items: center; gap: 8px; }
+        .ponos-access-member-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
         .ponos-message--system { font-style: italic; color: var(--kvt-muted); background: #f8fafc; }
         .ponos-message-compose {
             display: grid;
@@ -492,7 +581,114 @@ foreach ($i18nKeys as $key) {
             box-sizing: border-box;
         }
         .ponos-attachments { display: grid; gap: 6px; font-size: 0.9rem; }
-        .ponos-attachments a { color: var(--kvt-main-blue); }
+        .ponos-attachment-link {
+            display: inline-block;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: var(--kvt-main-blue);
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        .ponos-attachment-link:hover { color: var(--kvt-perkins-blue); }
+        .ponos-modal-dialog--preview {
+            width: min(920px, 96vw);
+            max-height: min(88vh, 900px);
+            display: flex;
+            flex-direction: column;
+        }
+        .ponos-preview-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .ponos-preview-title {
+            margin: 0;
+            color: var(--kvt-perkins-blue);
+            font-size: 1.05rem;
+            word-break: break-word;
+        }
+        .ponos-preview-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+            border: 1px solid var(--kvt-line);
+            border-radius: 10px;
+            background: #fff;
+        }
+        .ponos-preview-image {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            margin: 0 auto;
+        }
+        .ponos-preview-text,
+        .ponos-preview-code {
+            margin: 0;
+            padding: 14px 16px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.88rem;
+            line-height: 1.45;
+        }
+        .ponos-preview-code { white-space: pre; overflow-x: auto; }
+        .ponos-preview-markdown {
+            padding: 16px 18px;
+            line-height: 1.55;
+            font-size: 0.95rem;
+        }
+        .ponos-preview-markdown h1,
+        .ponos-preview-markdown h2,
+        .ponos-preview-markdown h3 { color: var(--kvt-perkins-blue); margin: 1em 0 0.5em; }
+        .ponos-preview-markdown h1:first-child,
+        .ponos-preview-markdown h2:first-child,
+        .ponos-preview-markdown h3:first-child { margin-top: 0; }
+        .ponos-preview-markdown pre {
+            overflow-x: auto;
+            padding: 12px;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        .ponos-preview-markdown code {
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.9em;
+        }
+        .ponos-preview-markdown :not(pre) > code {
+            background: #f1f5f9;
+            padding: 0.1em 0.35em;
+            border-radius: 4px;
+        }
+        .ponos-preview-table-wrap { overflow: auto; }
+        .ponos-preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .ponos-preview-table th,
+        .ponos-preview-table td {
+            border: 1px solid var(--kvt-line);
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: top;
+        }
+        .ponos-preview-table th {
+            background: #f8fafc;
+            color: var(--kvt-perkins-blue);
+            position: sticky;
+            top: 0;
+        }
+        .ponos-preview-table tr:nth-child(even) td { background: #fcfdff; }
+        .ponos-preview-loading,
+        .ponos-preview-error {
+            padding: 24px 18px;
+            color: var(--kvt-muted);
+            text-align: center;
+        }
         .ponos-user-footer {
             margin-top: auto; padding-top: 12px; border-top: 1px solid var(--kvt-line);
             display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: 0 0 auto;
@@ -534,7 +730,15 @@ foreach ($i18nKeys as $key) {
             <img src="logo-website.png" alt="KVT">
             <h1 class="brand-display"><?= ponos_h(LOC('ponos.hero.title')) ?></h1>
         </div>
-        <?php renderLanguageSwitcher(); ?>
+        <div class="ponos-topbar-tools">
+            <?php if (ponos_is_localhost_request()): ?>
+            <label class="ponos-dev-admin-toggle" for="ponos-dev-admin">
+                <span>Admin</span>
+                <input type="checkbox" id="ponos-dev-admin"<?= $isAdmin ? ' checked' : '' ?>>
+            </label>
+            <?php endif; ?>
+            <?php renderLanguageSwitcher(); ?>
+        </div>
     </header>
 
     <div class="ponos-body">
@@ -542,7 +746,9 @@ foreach ($i18nKeys as $key) {
             <h2><?= ponos_h(LOC('ponos.sidebar.groups')) ?></h2>
             <div id="ponos-sidebar-content" class="ponos-muted"><?= ponos_h(LOC('ponos.error.load_failed')) ?></div>
             <footer id="ponos-user-footer" class="ponos-user-footer">
-                <span id="ponos-user-name" class="ponos-user-footer-name"><?= ponos_h($userEmail) ?></span>
+                <div id="ponos-user-footer-label" class="ponos-user-footer-label">
+                    <span id="ponos-user-name" class="ponos-user-footer-name"><?= ponos_h($userEmail) ?></span>
+                </div>
                 <button type="button" id="ponos-settings-btn" class="ponos-settings-btn" title="<?= ponos_h(LOC('ponos.settings.title')) ?>">⚙</button>
             </footer>
         </aside>
@@ -690,6 +896,22 @@ foreach ($i18nKeys as $key) {
     </div>
 </div>
 
+<div id="ponos-preview-modal" class="ponos-modal-overlay" hidden aria-hidden="true">
+    <div class="ponos-modal-dialog ponos-modal-dialog--preview" role="dialog" aria-modal="true" aria-labelledby="ponos-preview-title">
+        <div class="ponos-preview-head">
+            <h3 id="ponos-preview-title" class="ponos-preview-title"></h3>
+            <button type="button" id="ponos-preview-close" class="ponos-btn ponos-btn--ghost">✕</button>
+        </div>
+        <div id="ponos-preview-body" class="ponos-preview-body">
+            <div class="ponos-preview-loading">…</div>
+        </div>
+        <div class="ponos-modal-actions" style="margin-top:14px;">
+            <a id="ponos-preview-download" class="ponos-btn" href="#" download><?= ponos_h(LOC('ponos.btn.download')) ?></a>
+            <button type="button" id="ponos-preview-cancel" class="ponos-btn ponos-btn--ghost"><?= ponos_h(LOC('ponos.btn.cancel')) ?></button>
+        </div>
+    </div>
+</div>
+
 <div id="ponos-danger-modal" class="ponos-danger-overlay" hidden aria-hidden="true">
     <div class="ponos-danger-dialog" role="alertdialog" aria-modal="true" aria-labelledby="ponos-danger-title">
         <div class="ponos-warning-tape-wrap" aria-hidden="true">
@@ -730,6 +952,7 @@ window.PONOS_BOOT = <?= json_encode([
     'task' => $taskId,
     'userEmail' => $userEmail,
     'isAdmin' => $isAdmin,
+    'isLocalhost' => ponos_is_localhost_request(),
     'statuses' => [
         'todo' => LOC('ponos.status.todo'),
         'in_progress' => LOC('ponos.status.in_progress'),
@@ -739,6 +962,10 @@ window.PONOS_BOOT = <?= json_encode([
     'dateLocale' => getDateLocale(),
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 </script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 <script src="ponos.js"></script>
 <?php renderLanguageSwitcherScript(); ?>
 </body>

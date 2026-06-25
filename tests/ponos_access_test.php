@@ -35,13 +35,39 @@ ponos_test('ponos_user_has_group_access respects open access and members', funct
     assert_true(is_array($group));
 
     assert_eq(false, ponos_user_has_group_access('user@kvt.nl', $group['id'], false));
-    assert_eq(true, ponos_user_has_group_access('user@kvt.nl', $group['id'], true));
+    assert_eq(false, ponos_user_has_group_access('user@kvt.nl', $group['id'], true));
 
     ponos_add_group_member($group['id'], 'user@kvt.nl');
     assert_eq(true, ponos_user_has_group_access('user@kvt.nl', $group['id'], false));
 
     ponos_set_group_open_access($group['id'], true);
     assert_eq(true, ponos_user_has_group_access('other@kvt.nl', $group['id'], false));
+});
+
+ponos_test('ponos_user_can_view_group lets admins see restricted groups', function (): void {
+    ponos_db_wipe_all();
+    $group = ponos_create_group('Hidden', 'owner@kvt.nl');
+    assert_true(is_array($group));
+
+    assert_eq(false, ponos_user_can_view_group('outsider@kvt.nl', $group['id'], false));
+    assert_eq(true, ponos_user_can_view_group('outsider@kvt.nl', $group['id'], true));
+    assert_eq(false, ponos_user_has_group_access('outsider@kvt.nl', $group['id'], true));
+});
+
+ponos_test('ponos_filter_groups_by_user_access shows all groups to admins', function (): void {
+    ponos_db_wipe_all();
+    $open = ponos_create_group('Open', 'admin@kvt.nl');
+    $closed = ponos_create_group('Closed', 'admin@kvt.nl');
+    assert_true(is_array($open) && is_array($closed));
+
+    ponos_set_group_open_access($open['id'], true);
+
+    $groups = ponos_list_groups(true);
+    $adminVisible = ponos_filter_groups_by_user_access($groups, 'outsider@kvt.nl', true);
+    $adminIds = array_map(static fn(array $group): string => (string) $group['id'], $adminVisible);
+
+    assert_true(in_array($open['id'], $adminIds, true));
+    assert_true(in_array($closed['id'], $adminIds, true));
 });
 
 ponos_test('ponos_filter_groups_by_user_access hides restricted groups', function (): void {
