@@ -17,6 +17,7 @@ require_once __DIR__ . '/ponos_categories.php';
 require_once __DIR__ . '/ponos_access.php';
 require_once __DIR__ . '/ponos_notify.php';
 require_once __DIR__ . '/ponos_reads.php';
+require_once __DIR__ . '/ponos_email_queue.php';
 require_once __DIR__ . '/ponos_stats.php';
 require_once __DIR__ . '/ponos_attachments.php';
 
@@ -420,6 +421,7 @@ if ($action === 'get_task') {
             $task['home_group_name'] = (string) ($homeGroup['name'] ?? '');
         }
         ponos_mark_task_messages_read($userEmail, $params['task']);
+        ponos_mark_task_seen($userEmail, $params['task']);
         $task['unread_count'] = 0;
         ponos_api_json(['ok' => true, 'task' => ponos_api_task_for_client($task, $userEmail)]);
     }
@@ -432,6 +434,7 @@ if ($action === 'get_task') {
     }
 
     ponos_mark_task_messages_read($userEmail, $params['task']);
+    ponos_mark_task_seen($userEmail, $params['task']);
     $task['unread_count'] = 0;
 
     ponos_api_json(['ok' => true, 'task' => ponos_api_task_for_client($task, $userEmail)]);

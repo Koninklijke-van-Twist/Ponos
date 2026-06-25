@@ -156,6 +156,34 @@ function ponos_db_migrate_schema(PDO $pdo): void
     );
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_group_members_email ON group_members(user_email)');
 
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS task_user_seen (
+            user_email TEXT NOT NULL,
+            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            seen_at TEXT NOT NULL,
+            PRIMARY KEY (user_email, task_id)
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS email_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipient_email TEXT NOT NULL,
+            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            group_id TEXT NOT NULL,
+            notification_type TEXT NOT NULL,
+            actor_email TEXT NOT NULL DEFAULT "",
+            subject TEXT NOT NULL,
+            intro TEXT NOT NULL,
+            group_name TEXT NOT NULL DEFAULT "",
+            reference_id INTEGER NULL,
+            payload_json TEXT NOT NULL DEFAULT "{}",
+            created_at TEXT NOT NULL,
+            UNIQUE(recipient_email, task_id, notification_type)
+        )'
+    );
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_email_queue_created ON email_queue(created_at)');
+
     if (ponos_db_meta_get($pdo, 'open_access_migrated') !== '1') {
         $pdo->exec('UPDATE groups SET open_access = 1');
         ponos_db_meta_set($pdo, 'open_access_migrated', '1');
@@ -534,6 +562,8 @@ function ponos_db_group_name(string $groupId): string
 function ponos_db_wipe_all(): void
 {
     $pdo = ponos_db();
+    $pdo->exec('DELETE FROM email_queue');
+    $pdo->exec('DELETE FROM task_user_seen');
     $pdo->exec('DELETE FROM attachments');
     $pdo->exec('DELETE FROM task_message_reads');
     $pdo->exec('DELETE FROM messages');

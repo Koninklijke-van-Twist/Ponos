@@ -5,6 +5,7 @@
  */
 require_once __DIR__ . '/ponos_data.php';
 require_once __DIR__ . '/ponos_email.php';
+require_once __DIR__ . '/ponos_email_queue.php';
 
 const PONOS_REMINDER_COOLDOWN_SECONDS = 3600;
 
@@ -220,7 +221,7 @@ function ponos_notify_task_assigned(array $task, string $actorEmail, string $gro
     $title = (string) ($task['title'] ?? '');
     $subject = LOC('ponos.email.subject.assigned', $title);
     $intro = LOC('ponos.email.intro.assigned', $title, $groupName);
-    ponos_email_send_task_notice($task, $assignee, $subject, $intro, $groupName);
+    ponos_queue_task_email($task, $assignee, $actorEmail, 'assigned', $subject, $intro, $groupName);
 }
 
 function ponos_notify_task_status_changed(
@@ -244,11 +245,26 @@ function ponos_notify_task_status_changed(
         ponos_status_label($newStatus),
         $groupName
     );
-    ponos_email_send_task_notice($task, $assignee, $subject, $intro, $groupName);
+    ponos_queue_task_email(
+        $task,
+        $assignee,
+        $actorEmail,
+        'status_changed',
+        $subject,
+        $intro,
+        $groupName,
+        null,
+        ['old_status' => $oldStatus, 'new_status' => $newStatus]
+    );
 }
 
-function ponos_notify_task_message(array $task, string $actorEmail, string $messageText, string $groupName): void
-{
+function ponos_notify_task_message(
+    array $task,
+    string $actorEmail,
+    string $messageText,
+    string $groupName,
+    ?int $messageId = null
+): void {
     $assignee = strtolower(trim((string) ($task['assignee_email'] ?? '')));
     if ($assignee === '' || !ponos_should_send_email($assignee, $actorEmail, 'message')) {
         return;
@@ -258,7 +274,7 @@ function ponos_notify_task_message(array $task, string $actorEmail, string $mess
     $subject = LOC('ponos.email.subject.message', $title);
     $snippet = mb_strlen($messageText) > 240 ? mb_substr($messageText, 0, 237) . '...' : $messageText;
     $intro = LOC('ponos.email.intro.message', $title, $actorEmail, $snippet, $groupName);
-    ponos_email_send_task_notice($task, $assignee, $subject, $intro, $groupName);
+    ponos_queue_task_email($task, $assignee, $actorEmail, 'message', $subject, $intro, $groupName, $messageId);
 }
 
 function ponos_notify_checklist_changed(array $task, string $actorEmail, string $groupName): void
@@ -271,7 +287,7 @@ function ponos_notify_checklist_changed(array $task, string $actorEmail, string 
     $title = (string) ($task['title'] ?? '');
     $subject = LOC('ponos.email.subject.checklist', $title);
     $intro = LOC('ponos.email.intro.checklist', $title, $groupName);
-    ponos_email_send_task_notice($task, $assignee, $subject, $intro, $groupName);
+    ponos_queue_task_email($task, $assignee, $actorEmail, 'checklist', $subject, $intro, $groupName);
 }
 
 function ponos_fetch_tasks_due_today(): array
@@ -360,5 +376,13 @@ function ponos_send_daily_due_reminders(): array
         'recipients' => count($byAssignee),
         'sent' => $sent,
         'skipped' => $skipped,
+    ];
+}
+
+function ponos_run_nightly_jobs(): array
+{
+    return [
+        'reminders' => ponos_send_daily_due_reminders(),
+        'queue' => ponos_process_email_queue(),
     ];
 }

@@ -23,18 +23,25 @@ if (PHP_SAPI !== 'cli') {
     }
 }
 
-$result = ponos_send_daily_due_reminders();
+$result = ponos_run_nightly_jobs();
+$reminders = $result['reminders'];
+$queue = $result['queue'];
 
 if (PHP_SAPI === 'cli') {
     echo sprintf(
-        "Ponos nightly %s: %d recipient(s) with due tasks, %d email(s) sent, %d skipped\n",
-        $result['date'],
-        $result['recipients'],
-        $result['sent'],
-        $result['skipped']
+        "Ponos nightly %s: %d reminder recipient(s), %d reminder email(s) sent, %d skipped; "
+        . "queue %d sent, %d cancelled, %d failed, %d pending\n",
+        $reminders['date'],
+        $reminders['recipients'],
+        $reminders['sent'],
+        $reminders['skipped'],
+        $queue['sent'],
+        $queue['cancelled'],
+        $queue['failed'],
+        $queue['pending']
     );
     exit(0);
 }
 
 header('Content-Type: application/json; charset=utf-8');
-echo json_encode(['ok' => true] + $result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+echo json_encode(['ok' => true, 'reminders' => $reminders, 'queue' => $queue], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

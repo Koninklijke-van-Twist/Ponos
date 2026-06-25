@@ -818,7 +818,7 @@ function ponos_add_task_message(
     if ($fullTask !== null) {
         $groupName = ponos_db_group_name($groupId);
         $fullTask['group_id'] = $groupId;
-        ponos_notify_task_message($fullTask, $email, $text, $groupName);
+        ponos_notify_task_message($fullTask, $email, $text, $groupName, $messageId);
     }
 
     return $normalized;
