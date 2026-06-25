@@ -191,11 +191,6 @@ function ponos_remove_group_member(string $groupId, string $userEmail, string $a
         return false;
     }
 
-    $actorEmail = strtolower(trim($actorEmail));
-    if ($actorEmail !== '' && $userEmail === $actorEmail) {
-        return false;
-    }
-
     $stmt = ponos_db()->prepare('DELETE FROM group_members WHERE group_id = ? AND LOWER(user_email) = ?');
     $stmt->execute([$groupId, $userEmail]);
 

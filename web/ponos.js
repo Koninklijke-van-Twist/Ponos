@@ -95,13 +95,12 @@
         statsModal: document.getElementById('ponos-stats-modal'),
         statsContent: document.getElementById('ponos-stats-content'),
         statsClose: document.getElementById('ponos-stats-close'),
-        devAdminToggle: document.getElementById('ponos-dev-admin'),
         previewModal: document.getElementById('ponos-preview-modal'),
         previewTitle: document.getElementById('ponos-preview-title'),
         previewBody: document.getElementById('ponos-preview-body'),
         previewDownload: document.getElementById('ponos-preview-download'),
         previewClose: document.getElementById('ponos-preview-close'),
-        previewCancel: document.getElementById('ponos-preview-cancel'),
+        devAdminToggle: document.getElementById('ponos-dev-admin'),
     };
 
     function formatI18n(key) {
@@ -1325,16 +1324,14 @@
                     label.innerHTML = renderUserAvatarHtml(email) + '<span>' + escapeHtml(memberLabel) + '</span>';
 
                     item.appendChild(label);
-                    if (String(email).toLowerCase() !== currentUserEmail()) {
-                        const removeBtn = document.createElement('button');
-                        removeBtn.type = 'button';
-                        removeBtn.className = 'ponos-btn ponos-btn--ghost';
-                        removeBtn.textContent = i18n['ponos.access.remove_member'];
-                        removeBtn.addEventListener('click', function () {
-                            removeGroupMember(email);
-                        });
-                        item.appendChild(removeBtn);
-                    }
+                    const removeBtn = document.createElement('button');
+                    removeBtn.type = 'button';
+                    removeBtn.className = 'ponos-btn ponos-btn--ghost';
+                    removeBtn.textContent = i18n['ponos.access.remove_member'];
+                    removeBtn.addEventListener('click', function () {
+                        removeGroupMember(email);
+                    });
+                    item.appendChild(removeBtn);
                     el.accessMemberList.appendChild(item);
                 });
             }
@@ -1898,18 +1895,28 @@
             assigneeText.className = 'ponos-card-assignee-text';
             const assigneeLabel = document.createElement('div');
             assigneeLabel.className = 'ponos-card-assignee-label';
-            assigneeLabel.innerHTML = renderUserAvatarHtml(assigneeEmail);
+            const avatarHtml = renderUserAvatarHtml(assigneeEmail, { className: 'ponos-user-avatar--assignee' });
+            if (avatarHtml !== '') {
+                const avatarHolder = document.createElement('div');
+                avatarHolder.innerHTML = avatarHtml;
+                if (avatarHolder.firstChild) {
+                    assigneeLabel.appendChild(avatarHolder.firstChild);
+                }
+            }
+            const assigneeLines = document.createElement('div');
+            assigneeLines.className = 'ponos-card-assignee-lines';
             const displayName = userNameByEmail(assigneeEmail);
             if (displayName !== '') {
                 const nameEl = document.createElement('span');
                 nameEl.className = 'ponos-card-assignee-name';
                 nameEl.textContent = displayName;
-                assigneeLabel.appendChild(nameEl);
+                assigneeLines.appendChild(nameEl);
             }
             const emailEl = document.createElement('span');
             emailEl.className = 'ponos-card-assignee-email';
             emailEl.textContent = assigneeEmail;
-            assigneeLabel.appendChild(emailEl);
+            assigneeLines.appendChild(emailEl);
+            assigneeLabel.appendChild(assigneeLines);
             assigneeText.appendChild(assigneeLabel);
             assignee.appendChild(assigneeText);
             body.appendChild(assignee);
@@ -2096,7 +2103,6 @@
         }
 
         wireMessageTextarea();
-        wireAttachmentLinks(el.detailBody);
         scrollMessagesToEnd();
     }
 
@@ -2129,40 +2135,19 @@
         });
     }
 
-    function renderMessageAuthorHtml(email, message) {
-        const normalized = String(email || '').toLowerCase().trim();
-        if (normalized === '') {
-            return '';
-        }
-
-        const emailColors = (message && message.colors) || colorFromText(normalized);
-        const displayName = userNameByEmail(normalized);
-        const authorClass = displayName !== '' ? 'ponos-message-author' : 'ponos-message-author ponos-message-author--email-only';
-        let html = '<div class="ponos-message-side"><div class="' + authorClass + '">';
-        html += renderUserAvatarHtml(normalized, { message: message, className: 'ponos-user-avatar--author' });
-        if (displayName !== '') {
-            html += '<span class="ponos-message-author-name" style="background:' + escapeHtml(emailColors.chipBackground)
-                + ';color:' + escapeHtml(emailColors.chipTextColor) + '">' + escapeHtml(displayName) + '</span>';
-            html += '<span class="ponos-message-author-email">' + escapeHtml(normalized) + '</span>';
-        } else {
-            html += '<span class="ponos-message-author-email">' + escapeHtml(normalized) + '</span>';
-        }
-        html += '</div></div>';
-        return html;
-    }
-
     function renderMessageHtml(message, taskId) {
         const emailColors = message.colors || colorFromText(message.email || '');
         const isSystem = message.kind === 'system';
         const email = String(message.email || '').trim();
+        const authorName = userNameByEmail(email) || email;
         let html = '';
         if (!isSystem) {
             html += '<div class="ponos-message-row">';
-            html += renderMessageAuthorHtml(email, message);
+            html += '<div class="ponos-message-avatar-wrap">' + renderUserAvatarHtml(email, { message: message }) + '</div>';
         }
         html += '<article class="ponos-message' + (isSystem ? ' ponos-message--system' : '') + '" style="border-color:' + escapeHtml(emailColors.border) + ';background:' + escapeHtml(emailColors.cardBackground) + '">';
         if (!isSystem) {
-            html += '<div class="ponos-message-meta"><span>' + escapeHtml(formatTimestamp(message.created_at)) + '</span></div>';
+            html += '<div class="ponos-message-meta"><span class="ponos-message-email" style="background:' + escapeHtml(emailColors.chipBackground) + ';color:' + escapeHtml(emailColors.chipTextColor) + '">' + escapeHtml(authorName) + '</span><span>' + escapeHtml(formatTimestamp(message.created_at)) + '</span></div>';
         }
         html += '<div>' + formatDescriptionHtml(message.text || '') + '</div>';
         if ((message.attachments || []).length > 0) {
@@ -2380,195 +2365,186 @@
         }).toString();
     }
 
-    function attachmentPreviewKind(filename, mime) {
-        const name = String(filename || '').toLowerCase();
-        const extension = name.includes('.') ? name.split('.').pop() : name;
-        const type = String(mime || '').toLowerCase();
-        const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'avif', 'tif', 'tiff', 'heic', 'heif', 'apng'];
+    function attachmentInlineUrl(attachmentId, taskId) {
+        return apiUrl('download_attachment', {
+            group: state.group,
+            attachment_id: attachmentId,
+            task: taskId || state.task,
+            inline: '1',
+        }).toString();
+    }
 
-        if (type.indexOf('image/') === 0 || imageExtensions.indexOf(extension) >= 0) {
+    function attachmentPreviewKind(file) {
+        const name = String(file.filename || '').toLowerCase();
+        const mime = String(file.mime || '').toLowerCase();
+        const ext = name.includes('.') ? name.split('.').pop() : '';
+        const imageExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico', 'tif', 'tiff', 'heic', 'heif'];
+        if (mime.startsWith('image/') || imageExt.indexOf(ext) >= 0) {
             return 'image';
         }
-        if (extension === 'md' || extension === 'markdown') {
+        if (ext === 'md' || ext === 'markdown') {
             return 'markdown';
         }
-        if (extension === 'csv' || extension === 'tsv') {
+        if (ext === 'csv' || mime === 'text/csv') {
             return 'csv';
         }
-
-        const codeExtensions = [
-            'js', 'ts', 'jsx', 'tsx', 'mjs', 'cjs', 'php', 'py', 'rb', 'go', 'rs', 'java', 'kt', 'kts', 'cs', 'cpp',
-            'cc', 'cxx', 'c', 'h', 'hpp', 'hh', 'css', 'scss', 'sass', 'less', 'html', 'htm', 'xml', 'xsl', 'xslt',
-            'sql', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini', 'conf', 'cfg',
-            'env', 'vue', 'svelte', 'swift', 'dart', 'lua', 'r', 'pl', 'pm', 'asm', 'zig', 'vb', 'fs', 'fsx', 'clj',
-            'ex', 'exs', 'erl', 'hrl', 'gradle', 'groovy', 'tf', 'tfvars', 'dockerfile', 'makefile', 'cmake', 'bat',
-            'cmd', 'reg', 'properties',
+        const codeExt = [
+            'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'php', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs',
+            'css', 'scss', 'less', 'html', 'htm', 'xml', 'json', 'yaml', 'yml', 'sql', 'sh', 'bash', 'bat', 'ps1',
+            'vue', 'svelte', 'kt', 'swift', 'lua', 'pl', 'r', 'dart', 'zig',
         ];
-        const basename = name.split('/').pop();
-        if (codeExtensions.indexOf(extension) >= 0 || ['dockerfile', 'makefile', 'gemfile', 'rakefile', 'vagrantfile'].indexOf(basename) >= 0) {
+        if (codeExt.indexOf(ext) >= 0 || mime.indexOf('json') >= 0 || mime.indexOf('xml') >= 0 || mime.indexOf('javascript') >= 0) {
             return 'code';
         }
-
-        const textExtensions = ['txt', 'log', 'text', 'rst', 'rtf', 'nfo'];
-        if (textExtensions.indexOf(extension) >= 0 || type.indexOf('text/') === 0) {
+        const textExt = ['txt', 'log', 'ini', 'cfg', 'conf', 'env', 'mdown'];
+        if (textExt.indexOf(ext) >= 0 || (mime.startsWith('text/') && ext !== 'csv')) {
             return 'text';
         }
-        if (['application/json', 'application/xml', 'application/javascript'].indexOf(type) >= 0) {
-            return 'code';
-        }
-
-        return '';
+        return null;
     }
 
     function renderAttachmentLinkHtml(file, taskId) {
-        const filename = String(file.filename || '');
-        const downloadUrl = attachmentUrl(file.id, taskId);
-        const previewKind = attachmentPreviewKind(filename, file.mime);
-        if (previewKind) {
-            return '<button type="button" class="ponos-attachment-link ponos-attachment-preview"'
-                + ' data-attachment-id="' + escapeAttr(String(file.id)) + '"'
-                + ' data-task-id="' + escapeAttr(String(taskId || state.task || '')) + '"'
-                + ' data-filename="' + escapeAttr(filename) + '"'
-                + ' data-mime="' + escapeAttr(String(file.mime || '')) + '">'
-                + escapeHtml(filename) + '</button>';
+        if (!attachmentPreviewKind(file)) {
+            return '<a href="' + escapeHtml(attachmentUrl(file.id, taskId)) + '">' + escapeHtml(file.filename) + '</a>';
         }
 
-        return '<a class="ponos-attachment-link" href="' + escapeHtml(downloadUrl) + '">' + escapeHtml(filename) + '</a>';
+        return '<button type="button" class="ponos-attachment-link"'
+            + ' data-attachment-id="' + escapeAttr(String(file.id)) + '"'
+            + ' data-task-id="' + escapeAttr(String(taskId || state.task || '')) + '"'
+            + ' data-filename="' + escapeAttr(file.filename || '') + '">'
+            + escapeHtml(file.filename) + '</button>';
     }
 
     function hideAttachmentPreview() {
         if (!el.previewModal) {
             return;
         }
+
         el.previewModal.hidden = true;
         el.previewModal.setAttribute('aria-hidden', 'true');
+        if (el.previewBody) {
+            el.previewBody.innerHTML = '';
+        }
     }
 
-    function renderAttachmentPreviewContent(data) {
-        const kind = String(data.preview_kind || '');
-        if (kind === 'image') {
-            const imageUrl = apiUrl('view_attachment', {
-                group: state.group,
-                attachment_id: data.attachment_id,
-                task: data.task_id || state.task,
-            }).toString();
-            return '<img class="ponos-preview-image" src="' + escapeHtml(imageUrl) + '" alt="' + escapeHtml(data.filename || '') + '">';
-        }
-
-        if (kind === 'markdown') {
-            if (window.marked && typeof window.marked.parse === 'function') {
-                if (typeof window.marked.setOptions === 'function') {
-                    window.marked.setOptions({ gfm: true, breaks: true });
-                }
-                let html = window.marked.parse(String(data.content || ''));
-                if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
-                    html = window.DOMPurify.sanitize(html);
-                }
-                return '<div class="ponos-preview-markdown">' + html + '</div>';
-            }
-            return '<pre class="ponos-preview-text">' + escapeHtml(String(data.content || '')) + '</pre>';
-        }
-
-        if (kind === 'csv') {
-            const headers = Array.isArray(data.headers) ? data.headers : [];
-            const rows = Array.isArray(data.rows) ? data.rows : [];
-            let tableHtml = '<div class="ponos-preview-table-wrap"><table class="ponos-preview-table"><thead><tr>';
-            headers.forEach(function (header) {
-                tableHtml += '<th>' + escapeHtml(header) + '</th>';
-            });
-            tableHtml += '</tr></thead><tbody>';
-            rows.forEach(function (row) {
-                tableHtml += '<tr>';
-                headers.forEach(function (_header, index) {
-                    tableHtml += '<td>' + escapeHtml(String((row || [])[index] || '')) + '</td>';
-                });
-                tableHtml += '</tr>';
-            });
-            tableHtml += '</tbody></table></div>';
-            return tableHtml;
-        }
-
-        const content = String(data.content || '');
-        if (kind === 'code') {
-            const language = String(data.language || '');
-            let highlighted = '';
-            if (window.hljs) {
-                try {
-                    highlighted = language && window.hljs.getLanguage(language)
-                        ? window.hljs.highlight(content, { language: language }).value
-                        : window.hljs.highlightAuto(content).value;
-                } catch (error) {
-                    highlighted = escapeHtml(content);
-                }
-            } else {
-                highlighted = escapeHtml(content);
-            }
-            return '<pre class="ponos-preview-code"><code class="hljs">' + highlighted + '</code></pre>';
-        }
-
-        return '<pre class="ponos-preview-text">' + escapeHtml(content) + '</pre>';
-    }
-
-    async function openAttachmentPreview(attachmentId, taskId, filename) {
-        if (!el.previewModal || !el.previewBody) {
+    function renderAttachmentPreview(data, attachmentId, taskId) {
+        if (!el.previewBody) {
             return;
         }
 
-        const resolvedTaskId = taskId || state.task || '';
-        el.previewModal.hidden = false;
-        el.previewModal.setAttribute('aria-hidden', 'false');
-        if (el.previewTitle) {
-            el.previewTitle.textContent = filename || i18n['ponos.attachment.preview_title'];
-        }
-        el.previewBody.innerHTML = '<div class="ponos-preview-loading">…</div>';
-
-        const downloadUrl = attachmentUrl(attachmentId, resolvedTaskId);
+        el.previewBody.className = 'ponos-preview-body';
+        el.previewBody.innerHTML = '';
+        const downloadUrl = attachmentUrl(attachmentId, taskId);
         if (el.previewDownload) {
             el.previewDownload.href = downloadUrl;
-            el.previewDownload.setAttribute('download', filename || '');
+            el.previewDownload.hidden = false;
+            if (data.filename) {
+                el.previewDownload.setAttribute('download', data.filename);
+            }
+        }
+
+        const type = data.preview_type;
+        if (type === 'image') {
+            const img = document.createElement('img');
+            img.className = 'ponos-preview-image';
+            img.src = attachmentInlineUrl(attachmentId, taskId);
+            img.alt = data.filename || '';
+            el.previewBody.appendChild(img);
+            return;
+        }
+
+        if (type === 'markdown') {
+            const div = document.createElement('div');
+            div.className = 'ponos-preview-markdown';
+            if (window.marked && typeof window.marked.parse === 'function') {
+                div.innerHTML = window.marked.parse(String(data.content || ''));
+            } else {
+                div.innerHTML = formatDescriptionHtml(data.content || '');
+            }
+            el.previewBody.appendChild(div);
+            return;
+        }
+
+        if (type === 'csv') {
+            const rows = Array.isArray(data.rows) ? data.rows : [];
+            const wrap = document.createElement('div');
+            wrap.className = 'ponos-preview-csv-wrap';
+            const table = document.createElement('table');
+            table.className = 'ponos-preview-csv';
+            const tbody = document.createElement('tbody');
+            rows.forEach(function (row) {
+                const tr = document.createElement('tr');
+                (Array.isArray(row) ? row : [row]).forEach(function (cell) {
+                    const td = document.createElement('td');
+                    td.textContent = String(cell);
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            wrap.appendChild(table);
+            el.previewBody.appendChild(wrap);
+            return;
+        }
+
+        if (type === 'code' || type === 'text') {
+            const pre = document.createElement('pre');
+            pre.className = 'ponos-preview-code';
+            const code = document.createElement('code');
+            const language = String(data.language || 'plaintext');
+            code.className = type === 'code' ? 'language-' + language : '';
+            code.textContent = String(data.content || '');
+            pre.appendChild(code);
+            el.previewBody.appendChild(pre);
+            if (type === 'code' && window.hljs && typeof window.hljs.highlightElement === 'function') {
+                window.hljs.highlightElement(code);
+            }
+            return;
+        }
+
+        el.previewBody.className = 'ponos-preview-body is-error';
+        el.previewBody.textContent = i18n['ponos.preview.unsupported'] || 'No preview available.';
+    }
+
+    async function openAttachmentPreview(attachmentId, taskId, filename) {
+        if (!el.previewModal || !el.previewBody || !el.previewTitle) {
+            return;
+        }
+
+        el.previewModal.hidden = false;
+        el.previewModal.setAttribute('aria-hidden', 'false');
+        el.previewTitle.textContent = filename || '';
+        el.previewBody.className = 'ponos-preview-body is-loading';
+        el.previewBody.textContent = i18n['ponos.preview.loading'] || '…';
+        if (el.previewDownload) {
+            el.previewDownload.hidden = true;
+            el.previewDownload.href = attachmentUrl(attachmentId, taskId);
+            if (filename) {
+                el.previewDownload.setAttribute('download', filename);
+            }
         }
 
         try {
             const response = await fetch(apiFetchUrl('preview_attachment', {
                 group: state.group,
                 attachment_id: attachmentId,
-                task: resolvedTaskId,
+                task: taskId,
             }), {
                 credentials: 'same-origin',
                 cache: 'no-store',
             });
             const data = await response.json();
             if (!data.ok) {
-                el.previewBody.innerHTML = '<div class="ponos-preview-error">' + escapeHtml(data.error || i18n['ponos.error.load_failed']) + '</div>';
+                el.previewBody.className = 'ponos-preview-body is-error';
+                el.previewBody.textContent = data.error || i18n['ponos.preview.failed'];
                 return;
             }
 
-            data.attachment_id = attachmentId;
-            data.task_id = resolvedTaskId;
-            el.previewBody.innerHTML = renderAttachmentPreviewContent(data);
+            renderAttachmentPreview(data, attachmentId, taskId);
         } catch (error) {
-            el.previewBody.innerHTML = '<div class="ponos-preview-error">' + escapeHtml(i18n['ponos.error.load_failed']) + '</div>';
+            el.previewBody.className = 'ponos-preview-body is-error';
+            el.previewBody.textContent = i18n['ponos.preview.failed'] || 'Preview failed.';
         }
-    }
-
-    function wireAttachmentLinks(root) {
-        if (!root) {
-            return;
-        }
-
-        root.querySelectorAll('.ponos-attachment-preview').forEach(function (button) {
-            if (button.dataset.previewWired === '1') {
-                return;
-            }
-            button.dataset.previewWired = '1';
-            button.addEventListener('click', function () {
-                openAttachmentPreview(
-                    button.dataset.attachmentId,
-                    button.dataset.taskId,
-                    button.dataset.filename || ''
-                );
-            });
-        });
     }
 
     function formatTimestamp(value) {
@@ -2762,6 +2738,28 @@
                 setDevAdmin(el.devAdminToggle.checked);
             });
         }
+        document.addEventListener('click', function (event) {
+            const link = event.target.closest('.ponos-attachment-link');
+            if (!link) {
+                return;
+            }
+            event.preventDefault();
+            openAttachmentPreview(
+                link.dataset.attachmentId,
+                link.dataset.taskId,
+                link.dataset.filename || ''
+            );
+        });
+        if (el.previewClose) {
+            el.previewClose.addEventListener('click', hideAttachmentPreview);
+        }
+        if (el.previewModal) {
+            el.previewModal.addEventListener('click', function (event) {
+                if (event.target === el.previewModal) {
+                    hideAttachmentPreview();
+                }
+            });
+        }
         if (el.groupPin) {
             el.groupPin.addEventListener('click', function (event) {
                 event.stopPropagation();
@@ -2787,19 +2785,6 @@
             el.statsModal.addEventListener('click', function (event) {
                 if (event.target === el.statsModal) {
                     hideStatsModal();
-                }
-            });
-        }
-        if (el.previewClose) {
-            el.previewClose.addEventListener('click', hideAttachmentPreview);
-        }
-        if (el.previewCancel) {
-            el.previewCancel.addEventListener('click', hideAttachmentPreview);
-        }
-        if (el.previewModal) {
-            el.previewModal.addEventListener('click', function (event) {
-                if (event.target === el.previewModal) {
-                    hideAttachmentPreview();
                 }
             });
         }

@@ -300,6 +300,7 @@ function ponos_normalize_task_row(array $row): array
 
     return [
         'id' => (string) ($row['id'] ?? ''),
+        'group_id' => trim((string) ($row['group_id'] ?? '')),
         'title' => (string) ($row['title'] ?? ''),
         'description' => (string) ($row['description'] ?? ''),
         'status' => (string) ($row['status'] ?? PONOS_STATUS_TODO),

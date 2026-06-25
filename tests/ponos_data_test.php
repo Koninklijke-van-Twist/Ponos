@@ -47,16 +47,44 @@ ponos_test('ponos_format_display_date formats ISO dates readably', function (): 
     assert_true(str_contains(strtolower($formatted), 'jun'));
 });
 
+ponos_test('ponos_admin_enabled pref persists admin toggle for admins', function (): void {
+    require_once dirname(__DIR__) . '/web/localization.php';
+
+    ponos_ensure_session();
+    $_SESSION['user']['admin'] = true;
+
+    $email = ponos_current_user_email();
+    $path = getUserPrefsPath($email);
+    if ($path !== null && is_file($path)) {
+        unlink($path);
+    }
+
+    assert_true(ponos_user_has_admin_role());
+    assert_true(ponos_current_user_is_admin());
+
+    ponos_save_admin_enabled($email, false);
+    assert_false(ponos_admin_enabled_for_user($email));
+    assert_false(ponos_current_user_is_admin());
+
+    ponos_save_admin_enabled($email, true);
+    assert_true(ponos_current_user_is_admin());
+
+    if ($path !== null && is_file($path)) {
+        unlink($path);
+    }
+});
+
 ponos_test('ponos_localhost admin toggle overrides admin status', function (): void {
     if (!ponos_is_localhost_request()) {
         return;
     }
 
-    ponos_set_localhost_admin(true);
+    $email = ponos_current_user_email();
+    ponos_save_admin_enabled($email, true);
     assert_true(ponos_current_user_is_admin());
-    ponos_set_localhost_admin(false);
+    ponos_save_admin_enabled($email, false);
     assert_false(ponos_current_user_is_admin());
-    ponos_set_localhost_admin(true);
+    ponos_save_admin_enabled($email, true);
 });
 
 ponos_test('ponos_current_user_is_admin defaults true on localhost', function (): void {
@@ -64,6 +92,6 @@ ponos_test('ponos_current_user_is_admin defaults true on localhost', function ()
         return;
     }
 
-    ponos_set_localhost_admin(true);
+    ponos_save_admin_enabled(ponos_current_user_email(), true);
     assert_true(ponos_current_user_is_admin());
 });

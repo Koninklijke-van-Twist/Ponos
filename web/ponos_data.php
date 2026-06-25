@@ -57,37 +57,61 @@ function ponos_ensure_session(): void
     }
 }
 
+function ponos_user_has_admin_role(): bool
+{
+    if (!empty($_SESSION['user']['admin'])) {
+        return true;
+    }
+
+    return ponos_is_localhost_request();
+}
+
+function ponos_admin_enabled_for_user(string $email): bool
+{
+    if (!function_exists('loadUserPrefs')) {
+        return true;
+    }
+
+    $prefs = loadUserPrefs($email);
+    if (!array_key_exists('ponos_admin_enabled', $prefs)) {
+        return true;
+    }
+
+    $value = strtolower(trim((string) $prefs['ponos_admin_enabled']));
+
+    return !in_array($value, ['0', 'false', 'no', 'off'], true);
+}
+
+function ponos_save_admin_enabled(string $email, bool $enabled): void
+{
+    if (!function_exists('saveUserPref')) {
+        return;
+    }
+
+    saveUserPref($email, 'ponos_admin_enabled', $enabled ? '1' : '0');
+}
+
 function ponos_localhost_admin_enabled(): bool
 {
     if (!ponos_is_localhost_request()) {
         return false;
     }
 
-    ponos_ensure_session();
-    if (!array_key_exists('ponos_dev_admin', $_SESSION)) {
-        $_SESSION['ponos_dev_admin'] = true;
-    }
-
-    return !empty($_SESSION['ponos_dev_admin']);
+    return ponos_admin_enabled_for_user(ponos_current_user_email());
 }
 
 function ponos_set_localhost_admin(bool $enabled): void
 {
-    if (!ponos_is_localhost_request()) {
-        return;
-    }
-
-    ponos_ensure_session();
-    $_SESSION['ponos_dev_admin'] = $enabled;
+    ponos_save_admin_enabled(ponos_current_user_email(), $enabled);
 }
 
 function ponos_current_user_is_admin(): bool
 {
-    if (ponos_is_localhost_request()) {
-        return ponos_localhost_admin_enabled();
+    if (!ponos_user_has_admin_role()) {
+        return false;
     }
 
-    return !empty($_SESSION['user']['admin']);
+    return ponos_admin_enabled_for_user(ponos_current_user_email());
 }
 
 function ponos_data_dir(): string

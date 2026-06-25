@@ -152,12 +152,12 @@ $userEmail = ponos_current_user_email();
 $isAdmin = ponos_current_user_is_admin();
 
 if ($action === 'set_dev_admin') {
-    if (!ponos_is_localhost_request()) {
+    if (!ponos_user_has_admin_role()) {
         ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
     }
 
     $enabled = in_array(strtolower(trim((string) ($_POST['admin'] ?? '0'))), ['1', 'true', 'yes', 'on'], true);
-    ponos_set_localhost_admin($enabled);
+    ponos_save_admin_enabled($userEmail, $enabled);
 
     ponos_api_json(['ok' => true, 'is_admin' => ponos_current_user_is_admin()]);
 }
@@ -326,10 +326,6 @@ if ($action === 'remove_group_member') {
 
     $params = ponos_api_require_params(['group', 'email']);
     ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
-    $memberEmail = strtolower(trim($params['email']));
-    if ($memberEmail === strtolower(trim($userEmail))) {
-        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.cannot_remove_own_access')], 400);
-    }
     if (!ponos_remove_group_member($params['group'], $params['email'], $userEmail)) {
         ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
     }
@@ -698,41 +694,64 @@ if ($action === 'add_message') {
     ponos_api_json(['ok' => true, 'message' => $message]);
 }
 
-if ($action === 'download_attachment' || $action === 'view_attachment' || $action === 'preview_attachment') {
+if ($action === 'preview_attachment') {
     $params = ponos_api_require_params(['group', 'attachment_id']);
     $taskId = trim((string) ($_GET['task'] ?? $_POST['task'] ?? ''));
-    $groupId = ponos_api_resolve_attachment_group($params['group'], $taskId);
-
+    $groupId = ponos_attachment_resolve_group_for_download($params['group'], $taskId);
     $attachment = ponos_find_attachment($groupId, (int) $params['attachment_id']);
     if ($attachment === null) {
-        if ($action === 'preview_attachment') {
-            ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.attachment_not_found')], 404);
-        }
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.attachment_not_found')], 404);
+    }
 
+    $previewType = ponos_attachment_preview_kind($attachment['filename'], $attachment['mime']);
+    if ($previewType === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.preview.unsupported')], 400);
+    }
+
+    $payload = [
+        'ok' => true,
+        'preview_type' => $previewType,
+        'filename' => $attachment['filename'],
+        'mime' => $attachment['mime'],
+        'attachment_id' => $attachment['id'],
+    ];
+
+    if ($previewType === 'image') {
+        ponos_api_json($payload);
+    }
+
+    $content = ponos_attachment_read_preview_content($attachment['path']);
+    if ($content === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.preview.too_large')], 413);
+    }
+
+    if ($previewType === 'csv') {
+        $payload['rows'] = ponos_attachment_parse_csv($content);
+    } else {
+        $payload['content'] = $content;
+        $payload['language'] = ponos_attachment_language_from_filename($attachment['filename']);
+    }
+
+    ponos_api_json($payload);
+}
+
+if ($action === 'download_attachment') {
+    $params = ponos_api_require_params(['group', 'attachment_id']);
+    $taskId = trim((string) ($_GET['task'] ?? $_POST['task'] ?? ''));
+    $groupId = ponos_attachment_resolve_group_for_download($params['group'], $taskId);
+    $attachment = ponos_find_attachment($groupId, (int) $params['attachment_id']);
+    if ($attachment === null) {
         http_response_code(404);
         echo LOC('ponos.error.attachment_not_found');
         exit;
     }
 
-    if ($action === 'preview_attachment') {
-        $payload = ponos_attachment_preview_payload($attachment);
-        if (empty($payload['ok'])) {
-            ponos_api_json($payload, 400);
-        }
-
-        $urls = ponos_api_attachment_urls($params['group'], (int) $attachment['id'], $taskId);
-        $payload['download_url'] = $urls['download_url'];
-        if (($payload['preview_kind'] ?? '') === 'image') {
-            $payload['inline_url'] = $urls['inline_url'];
-        }
-
-        ponos_api_json($payload);
-    }
-
-    $disposition = $action === 'view_attachment' ? 'inline' : 'attachment';
+    $inline = trim((string) ($_GET['inline'] ?? '')) === '1';
     header('Content-Type: ' . $attachment['mime']);
     header(
-        'Content-Disposition: ' . $disposition . '; filename="' . str_replace('"', '', $attachment['filename']) . '"'
+        'Content-Disposition: '
+        . ($inline ? 'inline' : 'attachment')
+        . '; filename="' . str_replace('"', '', $attachment['filename']) . '"'
     );
     header('Content-Length: ' . (string) filesize($attachment['path']));
     readfile($attachment['path']);
