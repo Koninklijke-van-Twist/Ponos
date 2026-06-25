@@ -688,6 +688,7 @@
         const text = String(value || '');
         for (let i = 0; i < text.length; i++) {
             hash = text.charCodeAt(i) + ((hash << 5) - hash);
+            hash = hash & 0x7fffffff;
         }
         return hash;
     }
@@ -1224,7 +1225,7 @@
         categories.forEach(function (category) {
             const item = document.createElement('li');
             item.className = 'ponos-category-admin-item';
-            const colors = categoryColorFromText(category.name);
+            const colors = category.colors || categoryColorFromText(category.name);
             const label = document.createElement('div');
             label.innerHTML = '<span class="ponos-category-swatch" style="background:' + escapeHtml(colors.dark) + '"></span>'
                 + escapeHtml(category.name);

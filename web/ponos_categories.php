@@ -22,12 +22,15 @@ function ponos_category_display_label(string $label): string
 
 function ponos_normalize_category_row(array $row): array
 {
+    $name = trim((string) ($row['name'] ?? ''));
+
     return [
         'id' => (string) ($row['id'] ?? ''),
         'group_id' => (string) ($row['group_id'] ?? ''),
-        'name' => trim((string) ($row['name'] ?? '')),
+        'name' => $name,
         'sort_order' => (int) ($row['sort_order'] ?? 0),
         'created_at' => (string) ($row['created_at'] ?? ''),
+        'colors' => ponos_category_color_from_text($name),
     ];
 }
 
