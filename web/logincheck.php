@@ -34,11 +34,21 @@ if (!is_trusted_requester()) {
     require __DIR__ . "/../login/lib.php";
 
     if (
+        isset($allowedUsers) &&
         !array_any($allowedUsers, function ($email) {
             return strtolower((string) $email) === strtolower((string) ($_SESSION['user']['email'] ?? ''));
         })
     ) {
         require __DIR__ . "/../login/403.php";
         die();
+    }
+
+    if (
+        isset($icUsers) &&
+        array_any($icUsers, function ($email) {
+            return strtolower((string) $email) === strtolower((string) ($_SESSION['user']['email'] ?? ''));
+        })
+    ) {
+        $_SESSION['user']['admin'] = true;
     }
 }

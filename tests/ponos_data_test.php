@@ -16,78 +16,46 @@ ponos_test('ponos_color_from_text returns defaults for empty input', function ()
     assert_array_has_key('light', $colors);
 });
 
-ponos_test('ponos_merge_department_codes grows persistent cache', function (): void {
-    $company = 'Test Company Merge';
-    $path = ponos_department_cache_path($company);
-    if (is_file($path)) {
-        unlink($path);
-    }
-
-    $first = ponos_merge_department_codes($company, ['ENG', 'INK']);
-    assert_eq(2, count($first));
-    assert_array_has_key('ENG', $first);
-
-    $second = ponos_merge_department_codes($company, ['PROD']);
-    assert_eq(3, count($second));
-    assert_array_has_key('ENG', $second);
-    assert_array_has_key('PROD', $second);
-
-    if (is_file($path)) {
-        unlink($path);
-    }
-});
-
-ponos_test('ponos_normalize_project_row maps department code', function (): void {
-    $row = ponos_normalize_project_row([
-        'No' => 'PRJ001',
-        'Description' => 'Demo',
-        'Status' => 'Open',
-        'Project_Manager' => 'KVT\\USER',
-        'LVS_Global_Dimension_1_Code' => 'ENG',
-    ]);
-
-    assert_eq('PRJ001', $row['no']);
-    assert_eq('ENG', $row['department_code']);
-});
-
-ponos_test('ponos_group_projects_by_department groups correctly', function (): void {
-    $grouped = ponos_group_projects_by_department([
-        ['no' => 'A', 'department_code' => 'ENG'],
-        ['no' => 'B', 'department_code' => 'INK'],
-        ['no' => 'C', 'department_code' => 'ENG'],
-        ['no' => 'D', 'department_code' => ''],
-    ]);
-
-    assert_eq(2, count($grouped['ENG']));
-    assert_eq(1, count($grouped['INK']));
-    assert_eq(1, count($grouped['_none']));
-});
-
-ponos_test('ponos_resolve_company_choice prefers requested company', function (): void {
-    $companies = ['Alpha', 'Beta'];
-    assert_eq('Beta', ponos_resolve_company_choice($companies, 'Beta', 'Alpha'));
-    assert_eq('Alpha', ponos_resolve_company_choice($companies, '', 'Alpha'));
-});
-
-ponos_test('ponos_save_user_navigation_prefs clears department when empty', function (): void {
+ponos_test('ponos_save_user_navigation_prefs stores group preference', function (): void {
     require_once dirname(__DIR__) . '/web/localization.php';
 
-    $email = 'ponos-prefs-clear-test@kvt.nl';
+    $email = 'ponos-prefs-group-test@kvt.nl';
     $path = getUserPrefsPath($email);
     if ($path !== null && is_file($path)) {
         unlink($path);
     }
 
-    ponos_save_user_navigation_prefs($email, 'Test Company', 'ENG');
+    ponos_save_user_navigation_prefs($email, 'group-abc');
     $prefs = ponos_load_user_navigation_prefs($email);
-    assert_eq('ENG', $prefs['department']);
+    assert_eq('group-abc', $prefs['group']);
 
-    ponos_save_user_navigation_prefs($email, 'Other Company', '');
+    ponos_save_user_navigation_prefs($email, '');
     $prefs = ponos_load_user_navigation_prefs($email);
-    assert_eq('Other Company', $prefs['company']);
-    assert_eq('', $prefs['department']);
+    assert_eq('', $prefs['group']);
 
     if ($path !== null && is_file($path)) {
         unlink($path);
     }
+});
+
+ponos_test('ponos_format_display_date formats ISO dates readably', function (): void {
+    require_once dirname(__DIR__) . '/web/localization.php';
+
+    $formatted = ponos_format_display_date('2026-06-15');
+    assert_true(str_contains($formatted, '15'));
+    assert_true(str_contains($formatted, '2026'));
+    assert_true(str_contains(strtolower($formatted), 'jun'));
+});
+
+ponos_test('ponos_current_user_is_admin is true for trusted requester', function (): void {
+    if (!function_exists('is_trusted_requester')) {
+        return;
+    }
+
+    $wasTrusted = is_trusted_requester();
+    if (!$wasTrusted) {
+        return;
+    }
+
+    assert_true(ponos_current_user_is_admin());
 });

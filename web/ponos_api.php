@@ -12,6 +12,11 @@ require_once __DIR__ . '/logincheck.php';
 require_once __DIR__ . '/localization.php';
 require_once __DIR__ . '/ponos_data.php';
 require_once __DIR__ . '/ponos_storage.php';
+require_once __DIR__ . '/ponos_groups.php';
+require_once __DIR__ . '/ponos_categories.php';
+require_once __DIR__ . '/ponos_access.php';
+require_once __DIR__ . '/ponos_notify.php';
+require_once __DIR__ . '/ponos_reads.php';
 
 /**
  * Functies
@@ -95,94 +100,368 @@ function ponos_api_parse_checklist_from_request(): array
     return $decoded;
 }
 
+function ponos_api_task_group_id(string $viewGroupId, string $taskId): ?string
+{
+    if (!ponos_is_my_tasks_group($viewGroupId)) {
+        return $viewGroupId;
+    }
+
+    $location = ponos_find_task_location($taskId);
+
+    return $location['group_id'] ?? null;
+}
+
+function ponos_api_require_group_access(string $groupId, string $userEmail, bool $isAdmin): void
+{
+    if (ponos_is_my_tasks_group($groupId)) {
+        return;
+    }
+
+    if (!ponos_user_has_group_access($userEmail, $groupId, $isAdmin)) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 404);
+    }
+}
+
 /**
  * Page load
  */
 
 $action = trim((string) ($_GET['action'] ?? $_POST['action'] ?? ''));
 $userEmail = ponos_current_user_email();
+$isAdmin = ponos_current_user_is_admin();
 
 if ($action === 'navigation') {
-    $company = trim((string) ($_GET['company'] ?? ''));
-    $companies = ponos_companies_for_page();
-    if ($company === '') {
-        $prefs = ponos_load_user_navigation_prefs($userEmail);
-        $company = ponos_resolve_company_choice($companies, '', $prefs['company']);
-    } else {
-        $company = ponos_resolve_company_choice($companies, $company, '');
-    }
-
-    auth_set_current_company_context($company);
-
-    try {
-        $projects = ponos_fetch_projects_for_company($company);
-        $dimensionNames = ponos_fetch_dimension_names($company);
-        $navigation = ponos_build_departments_payload($company, $projects, $dimensionNames);
-    } catch (Throwable $error) {
-        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.load_failed')], 500);
-    }
+    $navigation = ponos_navigation_payload($userEmail, $isAdmin);
 
     ponos_api_json([
         'ok' => true,
-        'company' => $company,
-        'companies' => $companies,
-        'categories' => PONOS_TASK_CATEGORIES,
+        'groups' => $navigation['groups'],
         'statuses' => [
             PONOS_STATUS_TODO => LOC('ponos.status.todo'),
             PONOS_STATUS_IN_PROGRESS => LOC('ponos.status.in_progress'),
             PONOS_STATUS_DONE => LOC('ponos.status.done'),
         ],
-        'departments' => $navigation['departments'],
-        'projects_by_department' => $navigation['projects_by_department'],
         'user_email' => $userEmail,
-        'prefs' => ponos_load_user_navigation_prefs($userEmail),
+        'is_admin' => $isAdmin,
+        'prefs' => array_merge(
+            ponos_load_user_navigation_prefs($userEmail),
+            [
+                'pinned_groups' => $navigation['pinned_groups'],
+                'email_prefs' => $navigation['email_prefs'],
+                'skip_task_reminder_confirm' => $navigation['skip_task_reminder_confirm'],
+            ]
+        ),
+    ]);
+}
+
+if ($action === 'save_email_prefs') {
+    $input = [];
+    foreach (ponos_email_pref_keys() as $key) {
+        $input[$key] = in_array(strtolower(trim((string) ($_POST[$key] ?? '0'))), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    $prefs = ponos_save_email_prefs($userEmail, $input);
+    ponos_api_json(['ok' => true, 'email_prefs' => $prefs]);
+}
+
+if ($action === 'toggle_group_pin') {
+    $params = ponos_api_require_params(['group']);
+    if (ponos_is_my_tasks_group($params['group'])) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 400);
+    }
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+
+    $pinned = ponos_toggle_pinned_group($userEmail, $params['group']);
+    $navigation = ponos_navigation_payload($userEmail, $isAdmin);
+    ponos_api_json([
+        'ok' => true,
+        'pinned' => $pinned,
+        'pinned_groups' => $navigation['pinned_groups'],
+        'groups' => $navigation['groups'],
     ]);
 }
 
 if ($action === 'save_prefs') {
-    $company = trim((string) ($_POST['company'] ?? ''));
-    $department = trim((string) ($_POST['department'] ?? ''));
-    if ($company !== '') {
-        ponos_save_user_navigation_prefs($userEmail, $company, $department);
-    }
+    $group = trim((string) ($_POST['group'] ?? ''));
+    ponos_save_user_navigation_prefs($userEmail, $group);
 
     ponos_api_json(['ok' => true, 'prefs' => ponos_load_user_navigation_prefs($userEmail)]);
 }
 
+if ($action === 'create_group') {
+    if (!$isAdmin) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
+    }
+
+    $params = ponos_api_require_params(['name']);
+    $group = ponos_create_group($params['name'], $userEmail);
+    if ($group === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
+    }
+
+    ponos_api_json(['ok' => true, 'group' => $group]);
+}
+
+if ($action === 'update_group') {
+    if (!$isAdmin) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
+    }
+
+    $params = ponos_api_require_params(['group', 'name']);
+    $group = ponos_update_group($params['group'], $params['name']);
+    if ($group === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 404);
+    }
+
+    ponos_api_json(['ok' => true, 'group' => $group]);
+}
+
+if ($action === 'delete_group') {
+    if (!$isAdmin) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
+    }
+
+    $params = ponos_api_require_params(['group']);
+    $confirm = in_array(strtolower(trim((string) ($_POST['confirm'] ?? '0'))), ['1', 'true', 'yes', 'on'], true);
+    $result = ponos_delete_group($params['group'], $confirm);
+    if (empty($result['ok'])) {
+        $status = !empty($result['needs_confirm']) ? 409 : 400;
+        ponos_api_json($result, $status);
+    }
+
+    ponos_api_json($result);
+}
+
+if ($action === 'list_categories') {
+    $params = ponos_api_require_params(['group']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    if (ponos_is_my_tasks_group($params['group'])) {
+        ponos_api_json(['ok' => true, 'categories' => []]);
+    }
+
+    ponos_api_json(['ok' => true, 'categories' => ponos_list_categories($params['group'])]);
+}
+
+if ($action === 'get_group_access') {
+    if (!$isAdmin) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
+    }
+
+    $params = ponos_api_require_params(['group']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $settings = ponos_get_group_access_settings($params['group']);
+    if ($settings === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 404);
+    }
+
+    ponos_api_json(['ok' => true, 'access' => $settings]);
+}
+
+if ($action === 'set_group_open_access') {
+    if (!$isAdmin) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
+    }
+
+    $params = ponos_api_require_params(['group']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $openAccess = in_array(strtolower(trim((string) ($_POST['open_access'] ?? '0'))), ['1', 'true', 'yes', 'on'], true);
+    if (!ponos_set_group_open_access($params['group'], $openAccess)) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 404);
+    }
+
+    $settings = ponos_get_group_access_settings($params['group']);
+    ponos_api_json(['ok' => true, 'access' => $settings]);
+}
+
+if ($action === 'add_group_member') {
+    if (!$isAdmin) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
+    }
+
+    $params = ponos_api_require_params(['group', 'email']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    if (!ponos_add_group_member($params['group'], $params['email'])) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
+    }
+
+    ponos_api_json(['ok' => true, 'access' => ponos_get_group_access_settings($params['group'])]);
+}
+
+if ($action === 'remove_group_member') {
+    if (!$isAdmin) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
+    }
+
+    $params = ponos_api_require_params(['group', 'email']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $memberEmail = strtolower(trim($params['email']));
+    if ($memberEmail === strtolower(trim($userEmail))) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.cannot_remove_own_access')], 400);
+    }
+    if (!ponos_remove_group_member($params['group'], $params['email'], $userEmail)) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
+    }
+
+    ponos_api_json(['ok' => true, 'access' => ponos_get_group_access_settings($params['group'])]);
+}
+
+if ($action === 'create_category') {
+    if (!$isAdmin) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
+    }
+
+    $params = ponos_api_require_params(['group', 'name']);
+    $category = ponos_create_category($params['group'], $params['name']);
+    if ($category === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
+    }
+
+    ponos_api_json(['ok' => true, 'category' => $category]);
+}
+
+if ($action === 'update_category') {
+    if (!$isAdmin) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
+    }
+
+    $params = ponos_api_require_params(['group', 'category', 'name']);
+    $category = ponos_update_category($params['group'], $params['category'], $params['name']);
+    if ($category === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.category_not_found')], 404);
+    }
+
+    ponos_api_json(['ok' => true, 'category' => $category]);
+}
+
+if ($action === 'delete_category') {
+    if (!$isAdmin) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.admin_required')], 403);
+    }
+
+    $params = ponos_api_require_params(['group', 'category']);
+    if (!ponos_delete_category($params['group'], $params['category'])) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.category_not_found')], 404);
+    }
+
+    ponos_api_json(['ok' => true]);
+}
+
 if ($action === 'list_tasks') {
-    $params = ponos_api_require_params(['company', 'project']);
-    auth_set_current_company_context($params['company']);
-    $tasks = ponos_list_tasks($params['company'], $params['project']);
+    $params = ponos_api_require_params(['group']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $tasks = ponos_list_tasks_for_view($params['group'], $userEmail, $isAdmin);
     ponos_api_json(['ok' => true, 'tasks' => $tasks]);
 }
 
 if ($action === 'get_task') {
-    $params = ponos_api_require_params(['company', 'project', 'task']);
-    $task = ponos_get_task($params['company'], $params['project'], $params['task']);
+    $params = ponos_api_require_params(['group', 'task']);
+    if (ponos_is_my_tasks_group($params['group'])) {
+        $task = ponos_get_task_anywhere($params['task']);
+        if ($task === null) {
+            ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
+        }
+
+        $homeGroupId = (string) ($task['home_group_id'] ?? '');
+        if (!ponos_user_has_group_access($userEmail, $homeGroupId, $isAdmin)) {
+            ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
+        }
+
+        $homeGroup = ponos_find_group($homeGroupId);
+        if ($homeGroup !== null) {
+            $task['home_group_name'] = (string) ($homeGroup['name'] ?? '');
+        }
+        ponos_mark_task_messages_read($userEmail, $params['task']);
+        $task['unread_count'] = 0;
+        ponos_api_json(['ok' => true, 'task' => ponos_enrich_task_for_client($task)]);
+    }
+
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+
+    $task = ponos_get_task($params['group'], $params['task']);
     if ($task === null) {
         ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
+    }
+
+    ponos_mark_task_messages_read($userEmail, $params['task']);
+    $task['unread_count'] = 0;
+
+    ponos_api_json(['ok' => true, 'task' => ponos_enrich_task_for_client($task)]);
+}
+
+if ($action === 'send_task_reminder') {
+    $params = ponos_api_require_params(['group', 'task']);
+    $taskGroupId = ponos_api_task_group_id($params['group'], $params['task']);
+    if ($taskGroupId === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
+    }
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+
+    $skipConfirm = in_array(strtolower(trim((string) ($_POST['skip_confirm'] ?? '0'))), ['1', 'true', 'yes', 'on'], true);
+    if ($skipConfirm) {
+        ponos_save_skip_task_reminder_confirm($userEmail, true);
+    }
+
+    $result = ponos_send_task_email_reminder($taskGroupId, $params['task'], $userEmail);
+    if (empty($result['ok'])) {
+        ponos_api_json(['ok' => false, 'error' => (string) ($result['error'] ?? LOC('ponos.error.save_failed'))], 400);
+    }
+
+    ponos_api_json([
+        'ok' => true,
+        'last_reminder_at' => (string) ($result['last_reminder_at'] ?? ''),
+        'skip_task_reminder_confirm' => ponos_load_skip_task_reminder_confirm($userEmail),
+    ]);
+}
+
+if ($action === 'list_archived_tasks') {
+    $params = ponos_api_require_params(['group']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $page = max(1, (int) ($_GET['page'] ?? $_POST['page'] ?? 1));
+    $payload = ponos_list_archived_tasks($params['group'], $userEmail, $page);
+    ponos_api_json(array_merge(['ok' => true], $payload));
+}
+
+if ($action === 'unarchive_task') {
+    $params = ponos_api_require_params(['group', 'task']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $taskGroupId = ponos_api_task_group_id($params['group'], $params['task']);
+    if ($taskGroupId === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
+    }
+
+    $task = ponos_unarchive_task($taskGroupId, $params['task']);
+    if ($task === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
     }
 
     ponos_api_json(['ok' => true, 'task' => $task]);
 }
 
 if ($action === 'create_task') {
-    $params = ponos_api_require_params(['company', 'project', 'title', 'description']);
-    auth_set_current_company_context($params['company']);
+    $params = ponos_api_require_params(['group', 'title', 'description']);
+    if (ponos_is_my_tasks_group($params['group'])) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.cannot_create_in_my_tasks')], 400);
+    }
+
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+
+    $group = ponos_find_group($params['group']);
+    if ($group === null || empty($group['can_create_tasks'])) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 404);
+    }
 
     $input = [
         'title' => $params['title'],
         'description' => $params['description'],
-        'category' => trim((string) ($_POST['category'] ?? PONOS_TASK_CATEGORIES[0])),
         'assignee_email' => trim((string) ($_POST['assignee_email'] ?? '')),
         'due_date' => trim((string) ($_POST['due_date'] ?? '')),
         'checklist' => ponos_api_parse_checklist_from_request(),
+        'category_id' => trim((string) ($_POST['category_id'] ?? '')),
     ];
 
     try {
         $task = ponos_create_task(
-            $params['company'],
-            $params['project'],
+            $params['group'],
             $userEmail,
             $input,
             ponos_api_collect_uploaded_files()
@@ -199,9 +478,15 @@ if ($action === 'create_task') {
 }
 
 if ($action === 'update_task') {
-    $params = ponos_api_require_params(['company', 'project', 'task']);
+    $params = ponos_api_require_params(['group', 'task']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $taskGroupId = ponos_api_task_group_id($params['group'], $params['task']);
+    if ($taskGroupId === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
+    }
+
     $input = [];
-    foreach (['title', 'description', 'category', 'assignee_email', 'due_date'] as $field) {
+    foreach (['title', 'description', 'assignee_email', 'due_date', 'category_id'] as $field) {
         if (array_key_exists($field, $_POST)) {
             $input[$field] = $_POST[$field];
         }
@@ -212,8 +497,7 @@ if ($action === 'update_task') {
 
     try {
         $task = ponos_update_task(
-            $params['company'],
-            $params['project'],
+            $taskGroupId,
             $params['task'],
             $userEmail,
             $input,
@@ -227,12 +511,75 @@ if ($action === 'update_task') {
         ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
     }
 
+    $targetGroupId = trim((string) ($_POST['target_group'] ?? ''));
+    if ($targetGroupId !== '' && $targetGroupId !== $taskGroupId && !ponos_is_my_tasks_group($targetGroupId)) {
+        if (!ponos_user_has_group_access($userEmail, $targetGroupId, $isAdmin)) {
+            ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 404);
+        }
+
+        $targetGroup = ponos_find_group($targetGroupId);
+        if ($targetGroup === null) {
+            ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 404);
+        }
+
+        $task = ponos_move_task(
+            $taskGroupId,
+            $targetGroupId,
+            $params['task'],
+            $userEmail,
+            (string) ($targetGroup['name'] ?? '')
+        );
+        if ($task === null) {
+            ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
+        }
+    }
+
+    ponos_api_json(['ok' => true, 'task' => $task]);
+}
+
+if ($action === 'move_task') {
+    $params = ponos_api_require_params(['group', 'task', 'target_group']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    if (ponos_is_my_tasks_group($params['target_group'])) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 400);
+    }
+    if (!ponos_user_has_group_access($userEmail, $params['target_group'], $isAdmin)) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 404);
+    }
+
+    $fromGroupId = ponos_api_task_group_id($params['group'], $params['task']);
+    if ($fromGroupId === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
+    }
+
+    $targetGroup = ponos_find_group($params['target_group']);
+    if ($targetGroup === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.group_not_found')], 404);
+    }
+
+    $task = ponos_move_task(
+        $fromGroupId,
+        $params['target_group'],
+        $params['task'],
+        $userEmail,
+        (string) ($targetGroup['name'] ?? '')
+    );
+    if ($task === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
+    }
+
     ponos_api_json(['ok' => true, 'task' => $task]);
 }
 
 if ($action === 'update_status') {
-    $params = ponos_api_require_params(['company', 'project', 'task', 'status']);
-    $task = ponos_update_task_status($params['company'], $params['project'], $params['task'], $params['status']);
+    $params = ponos_api_require_params(['group', 'task', 'status']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $taskGroupId = ponos_api_task_group_id($params['group'], $params['task']);
+    if ($taskGroupId === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
+    }
+
+    $task = ponos_update_task_status($taskGroupId, $params['task'], $params['status'], $userEmail);
     if ($task === null) {
         ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
     }
@@ -241,14 +588,20 @@ if ($action === 'update_status') {
 }
 
 if ($action === 'toggle_checklist') {
-    $params = ponos_api_require_params(['company', 'project', 'task', 'item_id']);
+    $params = ponos_api_require_params(['group', 'task', 'item_id']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $taskGroupId = ponos_api_task_group_id($params['group'], $params['task']);
+    if ($taskGroupId === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
+    }
+
     $done = in_array(strtolower(trim((string) ($_POST['done'] ?? '1'))), ['1', 'true', 'yes', 'on'], true);
     $task = ponos_toggle_checklist_item(
-        $params['company'],
-        $params['project'],
+        $taskGroupId,
         $params['task'],
         (int) $params['item_id'],
-        $done
+        $done,
+        $userEmail
     );
     if ($task === null) {
         ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
@@ -258,11 +611,16 @@ if ($action === 'toggle_checklist') {
 }
 
 if ($action === 'add_message') {
-    $params = ponos_api_require_params(['company', 'project', 'task', 'text']);
+    $params = ponos_api_require_params(['group', 'task', 'text']);
+    ponos_api_require_group_access($params['group'], $userEmail, $isAdmin);
+    $taskGroupId = ponos_api_task_group_id($params['group'], $params['task']);
+    if ($taskGroupId === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.task_not_found')], 404);
+    }
+
     try {
         $message = ponos_add_task_message(
-            $params['company'],
-            $params['project'],
+            $taskGroupId,
             $params['task'],
             $userEmail,
             $params['text'],
@@ -280,8 +638,17 @@ if ($action === 'add_message') {
 }
 
 if ($action === 'download_attachment') {
-    $params = ponos_api_require_params(['company', 'project', 'attachment_id']);
-    $attachment = ponos_find_attachment($params['company'], $params['project'], (int) $params['attachment_id']);
+    $params = ponos_api_require_params(['group', 'attachment_id']);
+    $taskId = trim((string) ($_GET['task'] ?? $_POST['task'] ?? ''));
+    $groupId = $params['group'];
+    if ($taskId !== '' && ponos_is_my_tasks_group($groupId)) {
+        $location = ponos_find_task_location($taskId);
+        if ($location !== null) {
+            $groupId = $location['group_id'];
+        }
+    }
+
+    $attachment = ponos_find_attachment($groupId, (int) $params['attachment_id']);
     if ($attachment === null) {
         http_response_code(404);
         echo LOC('ponos.error.attachment_not_found');

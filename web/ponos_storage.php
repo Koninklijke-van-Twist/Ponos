@@ -4,6 +4,12 @@
  * Includes/requires
  */
 require_once __DIR__ . '/ponos_data.php';
+require_once __DIR__ . '/ponos_db.php';
+require_once __DIR__ . '/ponos_categories.php';
+require_once __DIR__ . '/ponos_access.php';
+require_once __DIR__ . '/ponos_archive.php';
+require_once __DIR__ . '/ponos_notify.php';
+require_once __DIR__ . '/ponos_reads.php';
 
 /**
  * Constants
@@ -19,14 +25,176 @@ const PONOS_ATTACHMENT_MAX_BYTES = 10485760;
  * Functies
  */
 
-function ponos_storage_dir(): string
+function ponos_enrich_task_for_client(array $task): array
 {
-    $dir = ponos_data_dir() . DIRECTORY_SEPARATOR . 'projects';
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0750, true);
+    $task['category_display'] = ponos_category_display_label((string) ($task['category_label'] ?? ''));
+    $task['is_archived'] = ponos_task_is_archived($task);
+    $task['can_remind'] = ponos_task_can_remind($task);
+
+    return $task;
+}
+
+function ponos_get_task_for_client(string $groupId, string $taskId): ?array
+{
+    $task = ponos_get_task($groupId, $taskId);
+    if ($task === null) {
+        return null;
     }
 
-    return $dir;
+    return ponos_enrich_task_for_client($task);
+}
+
+function ponos_send_task_email_reminder(string $groupId, string $taskId, string $actorEmail): array
+{
+    $task = ponos_db_fetch_task_array($taskId, false);
+    if ($task === null) {
+        return ['ok' => false, 'error' => LOC('ponos.error.task_not_found')];
+    }
+
+    $location = ponos_find_task_location($taskId);
+    if ($location === null || $location['group_id'] !== $groupId) {
+        return ['ok' => false, 'error' => LOC('ponos.error.task_not_found')];
+    }
+
+    if (!ponos_task_can_remind($task)) {
+        return ['ok' => false, 'error' => LOC('ponos.error.reminder_rate_limited')];
+    }
+
+    $groupName = ponos_db_group_name($groupId);
+    if (!ponos_notify_manual_task_reminder($task, $actorEmail, $groupName)) {
+        return ['ok' => false, 'error' => LOC('ponos.error.reminder_send_failed')];
+    }
+
+    $now = gmdate('c');
+    ponos_db()->prepare('UPDATE tasks SET last_reminder_at = ?, updated_at = ? WHERE id = ?')
+        ->execute([$now, $now, $taskId]);
+
+    ponos_db_insert_system_message(
+        $taskId,
+        LOC('ponos.system.reminder_sent', (string) ($task['assignee_email'] ?? ''))
+    );
+
+    return [
+        'ok' => true,
+        'last_reminder_at' => $now,
+    ];
+}
+
+function ponos_list_archived_tasks(string $viewGroupId, string $userEmail, int $page = 1): array
+{
+    $page = max(1, $page);
+    $offset = ($page - 1) * PONOS_ARCHIVE_PAGE_SIZE;
+    $cutoff = ponos_archive_cutoff_iso();
+    $pdo = ponos_db();
+
+    if ($viewGroupId === PONOS_GROUP_MY_TASKS) {
+        $userEmail = strtolower(trim($userEmail));
+        $countStmt = $pdo->prepare(
+            'SELECT COUNT(*) FROM tasks
+             WHERE LOWER(assignee_email) = ?
+               AND status = ?
+               AND TRIM(COALESCE(NULLIF(done_at, ""), updated_at)) != ""
+               AND TRIM(COALESCE(NULLIF(done_at, ""), updated_at)) < ?'
+        );
+        $countStmt->execute([$userEmail, PONOS_STATUS_DONE, $cutoff]);
+        $total = (int) $countStmt->fetchColumn();
+
+        $stmt = $pdo->prepare(
+            'SELECT t.id, t.group_id, g.name AS group_name
+             FROM tasks t
+             INNER JOIN groups g ON g.id = t.group_id
+             WHERE LOWER(t.assignee_email) = ?
+               AND t.status = ?
+               AND TRIM(COALESCE(NULLIF(t.done_at, ""), t.updated_at)) != ""
+               AND TRIM(COALESCE(NULLIF(t.done_at, ""), t.updated_at)) < ?
+             ORDER BY TRIM(COALESCE(NULLIF(t.done_at, ""), t.updated_at)) DESC
+             LIMIT ? OFFSET ?'
+        );
+        $stmt->execute([$userEmail, PONOS_STATUS_DONE, $cutoff, PONOS_ARCHIVE_PAGE_SIZE, $offset]);
+    } else {
+        $countStmt = $pdo->prepare(
+            'SELECT COUNT(*) FROM tasks
+             WHERE group_id = ?
+               AND status = ?
+               AND TRIM(COALESCE(NULLIF(done_at, ""), updated_at)) != ""
+               AND TRIM(COALESCE(NULLIF(done_at, ""), updated_at)) < ?'
+        );
+        $countStmt->execute([$viewGroupId, PONOS_STATUS_DONE, $cutoff]);
+        $total = (int) $countStmt->fetchColumn();
+
+        $stmt = $pdo->prepare(
+            'SELECT id, group_id
+             FROM tasks
+             WHERE group_id = ?
+               AND status = ?
+               AND TRIM(COALESCE(NULLIF(done_at, ""), updated_at)) != ""
+               AND TRIM(COALESCE(NULLIF(done_at, ""), updated_at)) < ?
+             ORDER BY TRIM(COALESCE(NULLIF(done_at, ""), updated_at)) DESC
+             LIMIT ? OFFSET ?'
+        );
+        $stmt->execute([$viewGroupId, PONOS_STATUS_DONE, $cutoff, PONOS_ARCHIVE_PAGE_SIZE, $offset]);
+    }
+
+    $tasks = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $groupId = (string) $row['group_id'];
+        $taskId = (string) $row['id'];
+        $task = ponos_get_task_for_client($groupId, $taskId);
+        if ($task === null) {
+            continue;
+        }
+
+        if ($viewGroupId === PONOS_GROUP_MY_TASKS) {
+            $task['home_group_id'] = $groupId;
+            $task['home_group_name'] = (string) ($row['group_name'] ?? '');
+        }
+
+        $tasks[] = $task;
+    }
+
+    $totalPages = $total > 0 ? (int) ceil($total / PONOS_ARCHIVE_PAGE_SIZE) : 1;
+
+    return [
+        'tasks' => $tasks,
+        'page' => $page,
+        'total' => $total,
+        'total_pages' => max(1, $totalPages),
+        'page_size' => PONOS_ARCHIVE_PAGE_SIZE,
+    ];
+}
+
+function ponos_unarchive_task(string $groupId, string $taskId): ?array
+{
+    $task = ponos_db_fetch_task_array($taskId, false);
+    if ($task === null) {
+        return null;
+    }
+
+    $location = ponos_find_task_location($taskId);
+    if ($location === null || $location['group_id'] !== $groupId) {
+        return null;
+    }
+
+    if ((string) ($task['status'] ?? '') !== PONOS_STATUS_DONE) {
+        return null;
+    }
+
+    if (!ponos_task_is_archived($task)) {
+        return ponos_get_task_for_client($groupId, $taskId);
+    }
+
+    $now = gmdate('c');
+    ponos_db()->prepare('UPDATE tasks SET done_at = ?, updated_at = ? WHERE id = ?')
+        ->execute([$now, $now, $taskId]);
+
+    ponos_db_insert_system_message($taskId, LOC('ponos.system.unarchived'));
+
+    return ponos_get_task_for_client($groupId, $taskId);
+}
+
+function ponos_group_store_path(string $groupId): string
+{
+    return ponos_db_path();
 }
 
 function ponos_attachments_dir(): string
@@ -39,85 +207,9 @@ function ponos_attachments_dir(): string
     return $dir;
 }
 
-function ponos_project_store_path(string $company, string $projectNo): string
-{
-    $safeCompany = ponos_normalize_company_key($company);
-    $safeProject = preg_replace('/[^a-z0-9._-]/i', '_', trim($projectNo)) ?? 'project';
-
-    return ponos_storage_dir() . DIRECTORY_SEPARATOR . $safeCompany . '_' . $safeProject . '.json';
-}
-
-function ponos_empty_project_store(): array
-{
-    return [
-        'tasks' => [],
-        'next_checklist_id' => 1,
-        'next_message_id' => 1,
-        'next_attachment_id' => 1,
-    ];
-}
-
-function ponos_load_project_store(string $company, string $projectNo): array
-{
-    $path = ponos_project_store_path($company, $projectNo);
-    if (!is_file($path)) {
-        return ponos_empty_project_store();
-    }
-
-    $decoded = json_decode((string) file_get_contents($path), true);
-    if (!is_array($decoded)) {
-        return ponos_empty_project_store();
-    }
-
-    if (!is_array($decoded['tasks'] ?? null)) {
-        $decoded['tasks'] = [];
-    }
-
-    $decoded['next_checklist_id'] = max(1, (int) ($decoded['next_checklist_id'] ?? 1));
-    $decoded['next_message_id'] = max(1, (int) ($decoded['next_message_id'] ?? 1));
-    $decoded['next_attachment_id'] = max(1, (int) ($decoded['next_attachment_id'] ?? 1));
-
-    return $decoded;
-}
-
-function ponos_save_project_store(string $company, string $projectNo, array $store): void
-{
-    $path = ponos_project_store_path($company, $projectNo);
-    $dir = dirname($path);
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0750, true);
-    }
-
-    file_put_contents($path, json_encode($store, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
-}
-
-function ponos_find_task_index(array $store, string $taskId): ?int
-{
-    foreach ($store['tasks'] as $index => $task) {
-        if (!is_array($task)) {
-            continue;
-        }
-
-        if ((string) ($task['id'] ?? '') === $taskId) {
-            return (int) $index;
-        }
-    }
-
-    return null;
-}
-
 function ponos_new_task_id(): string
 {
-    $bytes = random_bytes(16);
-    $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
-    $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
-    $hex = bin2hex($bytes);
-
-    return substr($hex, 0, 8) . '-'
-        . substr($hex, 8, 4) . '-'
-        . substr($hex, 12, 4) . '-'
-        . substr($hex, 16, 4) . '-'
-        . substr($hex, 20, 12);
+    return ponos_new_id();
 }
 
 function ponos_trim_message_text(string $text): string
@@ -203,16 +295,19 @@ function ponos_normalize_task_row(array $row): array
         }
     }
 
-    $category = trim((string) ($row['category'] ?? ''));
+    $colorKey = trim((string) ($row['_color_key'] ?? $row['category_label'] ?? ''));
 
     return [
         'id' => (string) ($row['id'] ?? ''),
         'title' => (string) ($row['title'] ?? ''),
         'description' => (string) ($row['description'] ?? ''),
         'status' => (string) ($row['status'] ?? PONOS_STATUS_TODO),
-        'category' => $category,
         'assignee_email' => strtolower(trim((string) ($row['assignee_email'] ?? ''))),
         'due_date' => trim((string) ($row['due_date'] ?? '')),
+        'category_id' => trim((string) ($row['category_id'] ?? '')),
+        'category_label' => trim((string) ($row['category_label'] ?? '')),
+        'done_at' => trim((string) ($row['done_at'] ?? '')),
+        'last_reminder_at' => trim((string) ($row['last_reminder_at'] ?? '')),
         'created_by' => strtolower(trim((string) ($row['created_by'] ?? ''))),
         'created_at' => (string) ($row['created_at'] ?? ''),
         'updated_at' => (string) ($row['updated_at'] ?? ''),
@@ -221,8 +316,15 @@ function ponos_normalize_task_row(array $row): array
         'checklist_total' => count($checklist),
         'checklist_done' => $checklistDone,
         'attachments' => ponos_task_attachments($row),
-        'colors' => ponos_color_from_text($category),
+        'colors' => ponos_color_from_text($colorKey),
     ];
+}
+
+function ponos_normalize_task_row_with_color(array $row, string $colorKey): array
+{
+    $row['_color_key'] = $colorKey;
+
+    return ponos_normalize_task_row($row);
 }
 
 function ponos_normalize_message_row(array $row, array $task): array
@@ -241,9 +343,11 @@ function ponos_normalize_message_row(array $row, array $task): array
     ];
 }
 
-function ponos_task_with_messages(array $task): array
+function ponos_task_with_messages(array $task, string $colorKey = ''): array
 {
-    $normalized = ponos_normalize_task_row($task);
+    $normalized = $colorKey !== ''
+        ? ponos_normalize_task_row_with_color($task, $colorKey)
+        : ponos_normalize_task_row($task);
     $messages = is_array($task['messages'] ?? null) ? $task['messages'] : [];
     $normalized['messages'] = array_map(
         static fn(array $message): array => ponos_normalize_message_row($message, $task),
@@ -253,87 +357,131 @@ function ponos_task_with_messages(array $task): array
     return $normalized;
 }
 
-function ponos_next_sort_order(array $store, string $status): int
+function ponos_list_tasks(string $groupId): array
 {
-    $max = -1;
-    foreach ($store['tasks'] as $task) {
-        if (!is_array($task)) {
-            continue;
-        }
+    $stmt = ponos_db()->prepare(
+        'SELECT id FROM tasks WHERE group_id = ? ORDER BY sort_order ASC, created_at ASC'
+    );
+    $stmt->execute([$groupId]);
 
-        if ((string) ($task['status'] ?? '') !== $status) {
-            continue;
-        }
-
-        $max = max($max, (int) ($task['sort_order'] ?? 0));
-    }
-
-    return $max + 1;
-}
-
-function ponos_append_system_message(array &$store, array &$task, string $text): void
-{
-    $text = ponos_trim_message_text($text);
-    if ($text === '') {
-        return;
-    }
-
-    if (!isset($task['messages']) || !is_array($task['messages'])) {
-        $task['messages'] = [];
-    }
-
-    $task['messages'][] = [
-        'id' => $store['next_message_id']++,
-        'email' => 'system@ponos.local',
-        'text' => $text,
-        'kind' => 'system',
-        'created_at' => gmdate('c'),
-    ];
-}
-
-function ponos_list_tasks(string $company, string $projectNo): array
-{
-    $store = ponos_load_project_store($company, $projectNo);
     $tasks = [];
-    foreach ($store['tasks'] as $task) {
-        if (!is_array($task)) {
+    foreach ($stmt->fetchAll() as $row) {
+        $task = ponos_db_fetch_task_array((string) $row['id'], false);
+        if ($task === null) {
             continue;
         }
 
-        $tasks[] = ponos_normalize_task_row($task);
-    }
-
-    usort($tasks, static function (array $left, array $right): int {
-        $order = ($left['sort_order'] ?? 0) <=> ($right['sort_order'] ?? 0);
-        if ($order !== 0) {
-            return $order;
+        $normalized = ponos_enrich_task_for_client(ponos_normalize_task_row($task));
+        if (!ponos_task_is_board_visible($normalized)) {
+            continue;
         }
 
-        return strcmp((string) ($left['created_at'] ?? ''), (string) ($right['created_at'] ?? ''));
-    });
+        $tasks[] = $normalized;
+    }
 
     return $tasks;
 }
 
-function ponos_get_task(string $company, string $projectNo, string $taskId): ?array
+function ponos_list_tasks_with_unread(string $groupId, string $userEmail): array
 {
-    $store = ponos_load_project_store($company, $projectNo);
-    $index = ponos_find_task_index($store, $taskId);
-    if ($index === null) {
+    return ponos_enrich_tasks_with_unread(ponos_list_tasks($groupId), $userEmail);
+}
+
+function ponos_get_task(string $groupId, string $taskId): ?array
+{
+    $stmt = ponos_db()->prepare('SELECT id FROM tasks WHERE id = ? AND group_id = ?');
+    $stmt->execute([$taskId, $groupId]);
+    if (!$stmt->fetchColumn()) {
         return null;
     }
 
-    $task = $store['tasks'][$index];
-    if (!is_array($task)) {
+    $task = ponos_db_fetch_task_array($taskId, true);
+    if ($task === null) {
         return null;
     }
 
     return ponos_task_with_messages($task);
 }
 
+function ponos_find_task_location(string $taskId): ?array
+{
+    $stmt = ponos_db()->prepare('SELECT group_id FROM tasks WHERE id = ?');
+    $stmt->execute([$taskId]);
+    $groupId = $stmt->fetchColumn();
+    if ($groupId === false) {
+        return null;
+    }
+
+    return [
+        'group_id' => (string) $groupId,
+    ];
+}
+
+function ponos_get_task_anywhere(string $taskId): ?array
+{
+    $location = ponos_find_task_location($taskId);
+    if ($location === null) {
+        return null;
+    }
+
+    $task = ponos_get_task($location['group_id'], $taskId);
+    if ($task === null) {
+        return null;
+    }
+
+    $task['home_group_id'] = $location['group_id'];
+
+    return $task;
+}
+
+function ponos_delete_group_task_store(string $groupId): void
+{
+    ponos_db()->prepare('DELETE FROM tasks WHERE group_id = ?')->execute([$groupId]);
+}
+
+function ponos_move_task(
+    string $fromGroupId,
+    string $toGroupId,
+    string $taskId,
+    string $editorEmail,
+    string $toGroupName = ''
+): ?array {
+    if ($fromGroupId === $toGroupId) {
+        return ponos_get_task($fromGroupId, $taskId);
+    }
+
+    $task = ponos_get_task($fromGroupId, $taskId);
+    if ($task === null) {
+        return null;
+    }
+
+    $status = (string) ($task['status'] ?? PONOS_STATUS_TODO);
+    $sortOrder = ponos_db_next_task_sort_order($toGroupId, $status);
+    $now = gmdate('c');
+    $assignee = strtolower(trim((string) ($task['assignee_email'] ?? '')));
+    $clearAssignee = $assignee !== '' && !ponos_user_has_group_access($assignee, $toGroupId, false);
+
+    if ($clearAssignee) {
+        ponos_db()->prepare(
+            'UPDATE tasks SET group_id = ?, category_id = NULL, assignee_email = "", sort_order = ?, updated_at = ? WHERE id = ?'
+        )->execute([$toGroupId, $sortOrder, $now, $taskId]);
+        ponos_db_insert_system_message($taskId, LOC('ponos.system.cleared_assignee_on_move'));
+    } else {
+        ponos_db()->prepare(
+            'UPDATE tasks SET group_id = ?, category_id = NULL, sort_order = ?, updated_at = ? WHERE id = ?'
+        )->execute([$toGroupId, $sortOrder, $now, $taskId]);
+    }
+
+    ponos_db_insert_system_message(
+        $taskId,
+        LOC('ponos.system.moved_to_group', $toGroupName !== '' ? $toGroupName : $toGroupId)
+    );
+
+    return ponos_get_task($toGroupId, $taskId);
+}
+
 function ponos_create_task(
-    string $company,
-    string $projectNo,
+    string $groupId,
     string $createdBy,
     array $input,
     array $uploadedFiles = []
@@ -348,21 +496,42 @@ function ponos_create_task(
         $title = mb_substr($title, 0, PONOS_TASK_TITLE_MAX_LENGTH);
     }
 
-    $category = trim((string) ($input['category'] ?? PONOS_TASK_CATEGORIES[0]));
-    if (!in_array($category, PONOS_TASK_CATEGORIES, true)) {
-        $category = PONOS_TASK_CATEGORIES[0];
-    }
-
     $status = trim((string) ($input['status'] ?? PONOS_STATUS_TODO));
     if (!in_array($status, ponos_all_statuses(), true)) {
         $status = PONOS_STATUS_TODO;
     }
 
-    $store = ponos_load_project_store($company, $projectNo);
+    $pdo = ponos_db();
     $taskId = ponos_new_task_id();
     $now = gmdate('c');
+    $sortOrder = ponos_db_next_task_sort_order($groupId, $status);
+    $category = ponos_resolve_task_category($groupId, trim((string) ($input['category_id'] ?? '')));
+    $assignee = ponos_normalize_assignee_for_group(
+        $groupId,
+        (string) ($input['assignee_email'] ?? '')
+    );
 
-    $checklist = [];
+    $pdo->prepare(
+        'INSERT INTO tasks(
+            id, group_id, title, description, status, assignee_email, due_date,
+            category_id, category_label, created_by, created_at, updated_at, sort_order
+        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    )->execute([
+        $taskId,
+        $groupId,
+        $title,
+        $description,
+        $status,
+        $assignee,
+        trim((string) ($input['due_date'] ?? '')),
+        $category['category_id'],
+        $category['category_label'],
+        strtolower(trim($createdBy)),
+        $now,
+        $now,
+        $sortOrder,
+    ]);
+
     $checklistInput = is_array($input['checklist'] ?? null) ? $input['checklist'] : [];
     foreach ($checklistInput as $index => $label) {
         $label = trim((string) $label);
@@ -370,61 +539,56 @@ function ponos_create_task(
             continue;
         }
 
-        $checklist[] = [
-            'id' => $store['next_checklist_id']++,
-            'label' => $label,
-            'done' => false,
-            'sort_order' => (int) $index,
-        ];
+        $pdo->prepare(
+            'INSERT INTO checklist_items(task_id, label, done, sort_order) VALUES(?, ?, 0, ?)'
+        )->execute([$taskId, $label, (int) $index]);
     }
 
-    $task = [
-        'id' => $taskId,
-        'title' => $title,
-        'description' => $description,
-        'status' => $status,
-        'category' => $category,
-        'assignee_email' => strtolower(trim((string) ($input['assignee_email'] ?? ''))),
-        'due_date' => trim((string) ($input['due_date'] ?? '')),
-        'created_by' => strtolower(trim($createdBy)),
-        'created_at' => $now,
-        'updated_at' => $now,
-        'sort_order' => ponos_next_sort_order($store, $status),
-        'checklist' => $checklist,
-        'messages' => [],
-        'attachments' => [],
-    ];
+    ponos_db_insert_system_message($taskId, LOC('ponos.system.task_created', $title));
 
-    ponos_append_system_message($store, $task, LOC('ponos.system.task_created', $title));
-    ponos_store_uploaded_files($store, $task, null, strtolower(trim($createdBy)), $uploadedFiles);
+    $task = ponos_db_fetch_task_array($taskId, true);
+    if ($task === null) {
+        return null;
+    }
 
-    $store['tasks'][] = $task;
-    ponos_save_project_store($company, $projectNo, $store);
+    ponos_db_store_uploaded_files($task, null, strtolower(trim($createdBy)), $uploadedFiles);
+    $pdo->prepare('UPDATE tasks SET updated_at = ? WHERE id = ?')->execute([gmdate('c'), $taskId]);
 
-    return ponos_get_task($company, $projectNo, $taskId);
+    $task = ponos_get_task($groupId, $taskId);
+    if ($task !== null) {
+        $groupName = ponos_db_group_name($groupId);
+        $assignee = strtolower(trim((string) ($task['assignee_email'] ?? '')));
+        if ($assignee !== '' && $assignee !== strtolower(trim($createdBy))) {
+            $task['group_id'] = $groupId;
+            ponos_notify_task_assigned($task, $createdBy, $groupName);
+        }
+    }
+
+    return $task;
 }
 
 function ponos_update_task(
-    string $company,
-    string $projectNo,
+    string $groupId,
     string $taskId,
     string $editorEmail,
     array $input,
     array $uploadedFiles = []
 ): ?array {
-    $store = ponos_load_project_store($company, $projectNo);
-    $index = ponos_find_task_index($store, $taskId);
-    if ($index === null) {
+    $task = ponos_db_fetch_task_array($taskId, true);
+    if ($task === null) {
         return null;
     }
 
-    $task = $store['tasks'][$index];
-    if (!is_array($task)) {
+    $location = ponos_find_task_location($taskId);
+    if ($location === null || $location['group_id'] !== $groupId) {
         return null;
     }
 
     $existing = ponos_normalize_task_row($task);
     $changes = [];
+    $assigneeChanged = false;
+    $checklistChanged = false;
+    $pdo = ponos_db();
 
     if (array_key_exists('title', $input)) {
         $title = trim((string) $input['title']);
@@ -442,18 +606,11 @@ function ponos_update_task(
         }
     }
 
-    if (array_key_exists('category', $input)) {
-        $category = trim((string) $input['category']);
-        if ($category !== '' && in_array($category, PONOS_TASK_CATEGORIES, true) && $category !== $existing['category']) {
-            $task['category'] = $category;
-            $changes[] = LOC('ponos.system.changed_category', $existing['category'], $category);
-        }
-    }
-
     if (array_key_exists('assignee_email', $input)) {
-        $assignee = strtolower(trim((string) $input['assignee_email']));
+        $assignee = ponos_normalize_assignee_for_group($groupId, (string) $input['assignee_email']);
         if ($assignee !== $existing['assignee_email']) {
             $task['assignee_email'] = $assignee;
+            $assigneeChanged = true;
             $changes[] = LOC('ponos.system.changed_assignee', $existing['assignee_email'] ?: '-', $assignee ?: '-');
         }
     }
@@ -462,129 +619,164 @@ function ponos_update_task(
         $dueDate = trim((string) $input['due_date']);
         if ($dueDate !== $existing['due_date']) {
             $task['due_date'] = $dueDate;
-            $changes[] = LOC('ponos.system.changed_due_date', $existing['due_date'] ?: '-', $dueDate ?: '-');
+            $changes[] = LOC(
+                'ponos.system.changed_due_date',
+                $existing['due_date'] ? ponos_format_display_date($existing['due_date']) : '-',
+                $dueDate ? ponos_format_display_date($dueDate) : '-'
+            );
+        }
+    }
+
+    $categoryId = (string) ($task['category_id'] ?? $existing['category_id']);
+    $categoryLabel = (string) ($task['category_label'] ?? $existing['category_label']);
+    if (array_key_exists('category_id', $input)) {
+        $resolved = ponos_resolve_task_category($groupId, trim((string) $input['category_id']));
+        if ($resolved['category_id'] !== $existing['category_id'] || $resolved['category_label'] !== $existing['category_label']) {
+            $categoryId = $resolved['category_id'];
+            $categoryLabel = $resolved['category_label'];
+            $task['category_id'] = $categoryId;
+            $task['category_label'] = $categoryLabel;
+            $changes[] = LOC('ponos.system.changed_category', $existing['category_label'] ?: '-', $categoryLabel ?: '-');
         }
     }
 
     if (array_key_exists('checklist', $input) && is_array($input['checklist'])) {
-        $labels = array_values(array_filter(array_map(static fn($label): string => trim((string) $label), $input['checklist']), static fn(string $label): bool => $label !== ''));
+        $labels = array_values(array_filter(
+            array_map(static fn($label): string => trim((string) $label), $input['checklist']),
+            static fn(string $label): bool => $label !== ''
+        ));
         $existingLabels = array_map(static fn(array $item): string => (string) ($item['label'] ?? ''), $existing['checklist']);
         if ($labels !== $existingLabels) {
-            $task['checklist'] = [];
+            $pdo->prepare('DELETE FROM checklist_items WHERE task_id = ?')->execute([$taskId]);
             foreach ($labels as $sortOrder => $label) {
-                $task['checklist'][] = [
-                    'id' => $store['next_checklist_id']++,
-                    'label' => $label,
-                    'done' => false,
-                    'sort_order' => (int) $sortOrder,
-                ];
+                $pdo->prepare(
+                    'INSERT INTO checklist_items(task_id, label, done, sort_order) VALUES(?, ?, 0, ?)'
+                )->execute([$taskId, $label, (int) $sortOrder]);
             }
             $changes[] = LOC('ponos.system.changed_checklist');
+            $checklistChanged = true;
         }
     }
 
-    ponos_store_uploaded_files($store, $task, null, strtolower(trim($editorEmail)), $uploadedFiles);
+    ponos_db_store_uploaded_files($task, null, strtolower(trim($editorEmail)), $uploadedFiles);
 
     if ($changes !== []) {
-        ponos_append_system_message($store, $task, LOC('ponos.system.task_updated') . ' ' . implode('; ', $changes));
+        ponos_db_insert_system_message($taskId, LOC('ponos.system.task_updated') . ' ' . implode('; ', $changes));
     }
 
-    $task['updated_at'] = gmdate('c');
-    $store['tasks'][$index] = $task;
-    ponos_save_project_store($company, $projectNo, $store);
+    $now = gmdate('c');
+    $pdo->prepare(
+        'UPDATE tasks SET title = ?, description = ?, assignee_email = ?, due_date = ?,
+         category_id = ?, category_label = ?, updated_at = ? WHERE id = ?'
+    )->execute([
+        (string) $task['title'],
+        (string) $task['description'],
+        (string) $task['assignee_email'],
+        (string) $task['due_date'],
+        $categoryId !== '' ? $categoryId : null,
+        $categoryLabel,
+        $now,
+        $taskId,
+    ]);
 
-    return ponos_get_task($company, $projectNo, $taskId);
+    $updatedTask = ponos_get_task($groupId, $taskId);
+    if ($updatedTask !== null) {
+        $groupName = ponos_db_group_name($groupId);
+        $updatedTask['group_id'] = $groupId;
+        $editor = strtolower(trim($editorEmail));
+        if ($assigneeChanged) {
+            ponos_notify_task_assigned($updatedTask, $editor, $groupName);
+        }
+        if ($checklistChanged) {
+            ponos_notify_checklist_changed($updatedTask, $editor, $groupName);
+        }
+    }
+
+    return $updatedTask;
 }
 
-function ponos_update_task_status(string $company, string $projectNo, string $taskId, string $status): ?array
+function ponos_update_task_status(string $groupId, string $taskId, string $status, string $actorEmail = ''): ?array
 {
     if (!in_array($status, ponos_all_statuses(), true)) {
         return null;
     }
 
-    $store = ponos_load_project_store($company, $projectNo);
-    $index = ponos_find_task_index($store, $taskId);
-    if ($index === null) {
+    $task = ponos_db_fetch_task_array($taskId, false);
+    if ($task === null) {
         return null;
     }
 
-    $task = $store['tasks'][$index];
-    if (!is_array($task)) {
+    $location = ponos_find_task_location($taskId);
+    if ($location === null || $location['group_id'] !== $groupId) {
         return null;
     }
 
     $existingStatus = (string) ($task['status'] ?? PONOS_STATUS_TODO);
     if ($existingStatus === $status) {
-        return ponos_get_task($company, $projectNo, $taskId);
+        return ponos_get_task($groupId, $taskId);
     }
 
-    $task['status'] = $status;
-    $task['sort_order'] = ponos_next_sort_order($store, $status);
-    $task['updated_at'] = gmdate('c');
-    ponos_append_system_message(
-        $store,
-        $task,
+    $sortOrder = ponos_db_next_task_sort_order($groupId, $status);
+    $now = gmdate('c');
+    $doneAt = ponos_done_at_for_status($status);
+
+    ponos_db()->prepare('UPDATE tasks SET status = ?, sort_order = ?, updated_at = ?, done_at = ? WHERE id = ?')
+        ->execute([$status, $sortOrder, $now, $doneAt, $taskId]);
+
+    ponos_db_insert_system_message(
+        $taskId,
         LOC('ponos.system.changed_status', ponos_status_label($existingStatus), ponos_status_label($status))
     );
 
-    $store['tasks'][$index] = $task;
-    ponos_save_project_store($company, $projectNo, $store);
+    $updatedTask = ponos_get_task($groupId, $taskId);
+    if ($updatedTask !== null) {
+        $groupName = ponos_db_group_name($groupId);
+        $updatedTask['group_id'] = $groupId;
+        ponos_notify_task_status_changed($updatedTask, strtolower(trim($actorEmail)), $existingStatus, $status, $groupName);
+    }
 
-    return ponos_get_task($company, $projectNo, $taskId);
+    return $updatedTask;
 }
 
-function ponos_toggle_checklist_item(string $company, string $projectNo, string $taskId, int $itemId, bool $done): ?array
-{
-    $store = ponos_load_project_store($company, $projectNo);
-    $index = ponos_find_task_index($store, $taskId);
-    if ($index === null) {
+function ponos_toggle_checklist_item(
+    string $groupId,
+    string $taskId,
+    int $itemId,
+    bool $done,
+    string $actorEmail = ''
+): ?array {
+    $location = ponos_find_task_location($taskId);
+    if ($location === null || $location['group_id'] !== $groupId) {
         return null;
     }
 
-    $task = $store['tasks'][$index];
-    if (!is_array($task)) {
+    $stmt = ponos_db()->prepare('UPDATE checklist_items SET done = ? WHERE id = ? AND task_id = ?');
+    $stmt->execute([$done ? 1 : 0, $itemId, $taskId]);
+    if ($stmt->rowCount() === 0) {
         return null;
     }
 
-    $found = false;
-    $checklist = is_array($task['checklist'] ?? null) ? $task['checklist'] : [];
-    foreach ($checklist as $checkIndex => $item) {
-        if (!is_array($item)) {
-            continue;
-        }
+    ponos_db()->prepare('UPDATE tasks SET updated_at = ? WHERE id = ?')->execute([gmdate('c'), $taskId]);
 
-        if ((int) ($item['id'] ?? 0) !== $itemId) {
-            continue;
-        }
-
-        $checklist[$checkIndex]['done'] = $done;
-        $found = true;
-        break;
+    $updatedTask = ponos_get_task($groupId, $taskId);
+    if ($updatedTask !== null) {
+        $groupName = ponos_db_group_name($groupId);
+        $updatedTask['group_id'] = $groupId;
+        ponos_notify_checklist_changed($updatedTask, strtolower(trim($actorEmail)), $groupName);
     }
 
-    if (!$found) {
-        return null;
-    }
-
-    $task['checklist'] = $checklist;
-    $task['updated_at'] = gmdate('c');
-    $store['tasks'][$index] = $task;
-    ponos_save_project_store($company, $projectNo, $store);
-
-    return ponos_get_task($company, $projectNo, $taskId);
+    return $updatedTask;
 }
 
 function ponos_add_task_message(
-    string $company,
-    string $projectNo,
+    string $groupId,
     string $taskId,
     string $email,
     string $text,
     array $uploadedFiles = []
 ): ?array {
-    $store = ponos_load_project_store($company, $projectNo);
-    $index = ponos_find_task_index($store, $taskId);
-    if ($index === null) {
+    $location = ponos_find_task_location($taskId);
+    if ($location === null || $location['group_id'] !== $groupId) {
         return null;
     }
 
@@ -594,13 +786,12 @@ function ponos_add_task_message(
         return null;
     }
 
-    $task = $store['tasks'][$index];
-    if (!is_array($task)) {
-        return null;
-    }
-
-    $messageId = $store['next_message_id']++;
     $createdAt = gmdate('c');
+    $pdo = ponos_db();
+    $pdo->prepare('INSERT INTO messages(task_id, email, text, kind, created_at) VALUES(?, ?, ?, ?, ?)')
+        ->execute([$taskId, $email, $text, 'user', $createdAt]);
+    $messageId = (int) $pdo->lastInsertId();
+
     $message = [
         'id' => $messageId,
         'email' => $email,
@@ -609,22 +800,29 @@ function ponos_add_task_message(
         'created_at' => $createdAt,
     ];
 
-    if (!isset($task['messages']) || !is_array($task['messages'])) {
-        $task['messages'] = [];
+    $task = ponos_db_fetch_task_array($taskId, true);
+    if ($task === null) {
+        return null;
     }
 
-    $task['messages'][] = $message;
-    ponos_store_uploaded_files($store, $task, $messageId, $email, $uploadedFiles);
-    $task['updated_at'] = gmdate('c');
-    $store['tasks'][$index] = $task;
-    ponos_save_project_store($company, $projectNo, $store);
+    ponos_db_store_uploaded_files($task, $messageId, $email, $uploadedFiles);
+    $pdo->prepare('UPDATE tasks SET updated_at = ? WHERE id = ?')->execute([gmdate('c'), $taskId]);
 
-    return ponos_normalize_message_row($message, $task);
+    $task = ponos_db_fetch_task_array($taskId, true);
+    $normalized = ponos_normalize_message_row($message, $task ?? ['attachments' => []]);
+
+    $fullTask = ponos_get_task($groupId, $taskId);
+    if ($fullTask !== null) {
+        $groupName = ponos_db_group_name($groupId);
+        $fullTask['group_id'] = $groupId;
+        ponos_notify_task_message($fullTask, $email, $text, $groupName);
+    }
+
+    return $normalized;
 }
 
-function ponos_store_uploaded_files(
-    array &$store,
-    array &$task,
+function ponos_db_store_uploaded_files(
+    array $task,
     ?int $messageId,
     string $uploadedBy,
     array $uploadedFiles
@@ -633,10 +831,12 @@ function ponos_store_uploaded_files(
         return;
     }
 
-    if (!isset($task['attachments']) || !is_array($task['attachments'])) {
-        $task['attachments'] = [];
+    $taskId = (string) ($task['id'] ?? '');
+    if ($taskId === '') {
+        return;
     }
 
+    $pdo = ponos_db();
     foreach ($uploadedFiles as $file) {
         if (!is_array($file)) {
             continue;
@@ -669,53 +869,48 @@ function ponos_store_uploaded_files(
             $mime = (string) mime_content_type($targetPath);
         }
 
-        $task['attachments'][] = [
-            'id' => $store['next_attachment_id']++,
-            'task_id' => (string) ($task['id'] ?? ''),
-            'message_id' => $messageId,
-            'filename' => $originalName,
-            'stored_name' => $storedName,
-            'mime' => $mime,
-            'size_bytes' => $size,
-            'uploaded_by' => strtolower(trim($uploadedBy)),
-            'created_at' => gmdate('c'),
-        ];
+        $pdo->prepare(
+            'INSERT INTO attachments(
+                task_id, message_id, filename, stored_name, mime, size_bytes, uploaded_by, created_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([
+            $taskId,
+            $messageId,
+            $originalName,
+            $storedName,
+            $mime,
+            $size,
+            strtolower(trim($uploadedBy)),
+            gmdate('c'),
+        ]);
     }
 }
 
-function ponos_find_attachment(string $company, string $projectNo, int $attachmentId): ?array
+function ponos_find_attachment(string $groupId, int $attachmentId): ?array
 {
-    $store = ponos_load_project_store($company, $projectNo);
-    foreach ($store['tasks'] as $task) {
-        if (!is_array($task)) {
-            continue;
-        }
-
-        $attachments = is_array($task['attachments'] ?? null) ? $task['attachments'] : [];
-        foreach ($attachments as $attachment) {
-            if (!is_array($attachment)) {
-                continue;
-            }
-
-            if ((int) ($attachment['id'] ?? 0) !== $attachmentId) {
-                continue;
-            }
-
-            $storedName = basename((string) ($attachment['stored_name'] ?? ''));
-            $path = ponos_attachments_dir() . DIRECTORY_SEPARATOR . $storedName;
-            if (!is_file($path)) {
-                return null;
-            }
-
-            return [
-                'id' => (int) ($attachment['id'] ?? 0),
-                'task_id' => (string) ($attachment['task_id'] ?? ''),
-                'filename' => (string) ($attachment['filename'] ?? ''),
-                'mime' => (string) ($attachment['mime'] ?? 'application/octet-stream'),
-                'path' => $path,
-            ];
-        }
+    $stmt = ponos_db()->prepare(
+        'SELECT a.id, a.task_id, a.filename, a.stored_name, a.mime, t.group_id
+         FROM attachments a
+         INNER JOIN tasks t ON t.id = a.task_id
+         WHERE a.id = ? AND t.group_id = ?'
+    );
+    $stmt->execute([$attachmentId, $groupId]);
+    $row = $stmt->fetch();
+    if (!is_array($row)) {
+        return null;
     }
 
-    return null;
+    $storedName = basename((string) ($row['stored_name'] ?? ''));
+    $path = ponos_attachments_dir() . DIRECTORY_SEPARATOR . $storedName;
+    if (!is_file($path)) {
+        return null;
+    }
+
+    return [
+        'id' => (int) $row['id'],
+        'task_id' => (string) $row['task_id'],
+        'filename' => (string) $row['filename'],
+        'mime' => (string) ($row['mime'] ?? 'application/octet-stream'),
+        'path' => $path,
+    ];
 }

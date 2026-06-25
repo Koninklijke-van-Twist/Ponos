@@ -3,9 +3,9 @@
     "short_name": "Ponos",
     "icons": [
         {
-            "src": "box.svg",
-            "sizes": "any",
-            "type": "image/svg+xml",
+            "src": "ponos-favicon.png",
+            "sizes": "512x512",
+            "type": "image/png",
             "purpose": "any"
         }
     ],
