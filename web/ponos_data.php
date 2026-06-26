@@ -57,9 +57,41 @@ function ponos_ensure_session(): void
     }
 }
 
+function ponos_ict_admin_emails(): array
+{
+    global $ictUsers;
+    if (!isset($ictUsers) || !is_array($ictUsers)) {
+        return [];
+    }
+
+    $emails = [];
+    foreach ($ictUsers as $email) {
+        $normalized = strtolower(trim((string) $email));
+        if ($normalized !== '') {
+            $emails[] = $normalized;
+        }
+    }
+
+    return $emails;
+}
+
+function ponos_user_is_ict_admin(?string $email = null): bool
+{
+    $email = strtolower(trim((string) ($email ?? ponos_current_user_email())));
+    if ($email === '') {
+        return false;
+    }
+
+    return in_array($email, ponos_ict_admin_emails(), true);
+}
+
 function ponos_user_has_admin_role(): bool
 {
     if (!empty($_SESSION['user']['admin'])) {
+        return true;
+    }
+
+    if (ponos_user_is_ict_admin()) {
         return true;
     }
 

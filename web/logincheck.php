@@ -44,8 +44,8 @@ if (!is_trusted_requester()) {
     }
 
     if (
-        isset($icUsers) &&
-        array_any($icUsers, function ($email) {
+        isset($ictUsers) &&
+        array_any($ictUsers, function ($email) {
             return strtolower((string) $email) === strtolower((string) ($_SESSION['user']['email'] ?? ''));
         })
     ) {

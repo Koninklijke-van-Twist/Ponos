@@ -47,6 +47,41 @@ ponos_test('ponos_format_display_date formats ISO dates readably', function (): 
     assert_true(str_contains(strtolower($formatted), 'jun'));
 });
 
+ponos_test('ponos_user_has_admin_role is true for ict users from auth', function (): void {
+    require_once dirname(__DIR__) . '/web/auth.php';
+
+    ponos_ensure_session();
+    $_SESSION['user'] = ['email' => 'tfalken@kvt.nl'];
+    unset($_SESSION['user']['admin']);
+
+    assert_true(ponos_user_is_ict_admin('tfalken@kvt.nl'));
+    assert_true(ponos_user_has_admin_role());
+    assert_false(ponos_user_is_ict_admin('other@kvt.nl'));
+});
+
+ponos_test('ponos_ict_admin keeps toggle role when admin pref is disabled', function (): void {
+    require_once dirname(__DIR__) . '/web/localization.php';
+    require_once dirname(__DIR__) . '/web/auth.php';
+
+    ponos_ensure_session();
+    $_SESSION['user'] = ['email' => 'tfalken@kvt.nl'];
+    unset($_SESSION['user']['admin']);
+
+    $email = ponos_current_user_email();
+    $path = getUserPrefsPath($email);
+    if ($path !== null && is_file($path)) {
+        unlink($path);
+    }
+
+    ponos_save_admin_enabled($email, false);
+    assert_false(ponos_current_user_is_admin());
+    assert_true(ponos_user_has_admin_role());
+
+    if ($path !== null && is_file($path)) {
+        unlink($path);
+    }
+});
+
 ponos_test('ponos_admin_enabled pref persists admin toggle for admins', function (): void {
     require_once dirname(__DIR__) . '/web/localization.php';
 
