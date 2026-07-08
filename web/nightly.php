@@ -10,11 +10,11 @@ declare(strict_types=1);
  * C:\xampp\php\php.exe C:\xampp\htdocs\Ponos\web\nightly.php
  */
 
+require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/localization.php';
 require_once __DIR__ . '/ponos_notify.php';
 
 if (PHP_SAPI !== 'cli') {
-    require_once __DIR__ . '/auth.php';
     require_once __DIR__ . '/logincheck.php';
     if (!function_exists('is_trusted_requester') || !is_trusted_requester()) {
         http_response_code(403);

@@ -521,7 +521,7 @@ foreach ($i18nKeys as $key) {
         }
         .ponos-stats-user-label { display: inline-flex; align-items: center; gap: 8px; }
         .ponos-access-member-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-        .ponos-message--system { font-style: italic; color: var(--kvt-muted); background: #f8fafc; }
+        .ponos-message--system .ponos-message-system-text { font-style: italic; }
         .ponos-message-compose {
             display: grid;
             gap: 8px;

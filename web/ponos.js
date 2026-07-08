@@ -879,8 +879,9 @@
                 linkClass += ' is-pinned';
             }
             link.className = linkClass;
-            const count = group.task_count != null ? group.task_count : 0;
-            const label = group.name + ' (' + count + ')';
+            const todoCount = group.task_count_todo != null ? group.task_count_todo : 0;
+            const inProgressCount = group.task_count_in_progress != null ? group.task_count_in_progress : 0;
+            const label = group.name + ' (' + todoCount + '/' + inProgressCount + ')';
             if (pinned) {
                 const pinIcon = document.createElement('span');
                 pinIcon.className = 'ponos-group-pin';
@@ -2188,15 +2189,11 @@
         const email = String(message.email || '').trim();
         const authorName = userNameByEmail(email) || email;
         let html = '';
-        if (!isSystem) {
-            html += '<div class="ponos-message-row">';
-            html += '<div class="ponos-message-avatar-wrap">' + renderUserAvatarHtml(email, { message: message }) + '</div>';
-        }
+        html += '<div class="ponos-message-row">';
+        html += '<div class="ponos-message-avatar-wrap">' + renderUserAvatarHtml(email, { message: message }) + '</div>';
         html += '<article class="ponos-message' + (isSystem ? ' ponos-message--system' : '') + '" style="border-color:' + escapeHtml(emailColors.border) + ';background:' + escapeHtml(emailColors.cardBackground) + '">';
-        if (!isSystem) {
-            html += '<div class="ponos-message-meta"><span class="ponos-message-email" style="background:' + escapeHtml(emailColors.chipBackground) + ';color:' + escapeHtml(emailColors.chipTextColor) + '">' + escapeHtml(authorName) + '</span><span>' + escapeHtml(formatTimestamp(message.created_at)) + '</span></div>';
-        }
-        html += '<div>' + formatDescriptionHtml(message.text || '') + '</div>';
+        html += '<div class="ponos-message-meta"><span class="ponos-message-email" style="background:' + escapeHtml(emailColors.chipBackground) + ';color:' + escapeHtml(emailColors.chipTextColor) + '">' + escapeHtml(authorName) + '</span><span>' + escapeHtml(formatTimestamp(message.created_at)) + '</span></div>';
+        html += '<div' + (isSystem ? ' class="ponos-message-system-text"' : '') + '>' + formatDescriptionHtml(message.text || '') + '</div>';
         if ((message.attachments || []).length > 0) {
             html += '<div class="ponos-attachments">';
             message.attachments.forEach(function (file) {
@@ -2205,9 +2202,7 @@
             html += '</div>';
         }
         html += '</article>';
-        if (!isSystem) {
-            html += '</div>';
-        }
+        html += '</div>';
         return html;
     }
 

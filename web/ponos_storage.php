@@ -72,7 +72,8 @@ function ponos_send_task_email_reminder(string $groupId, string $taskId, string 
 
     ponos_db_insert_system_message(
         $taskId,
-        LOC('ponos.system.reminder_sent', (string) ($task['assignee_email'] ?? ''))
+        LOC('ponos.system.reminder_sent', (string) ($task['assignee_email'] ?? '')),
+        $actorEmail
     );
 
     return [
@@ -164,7 +165,7 @@ function ponos_list_archived_tasks(string $viewGroupId, string $userEmail, int $
     ];
 }
 
-function ponos_unarchive_task(string $groupId, string $taskId): ?array
+function ponos_unarchive_task(string $groupId, string $taskId, string $actorEmail = ''): ?array
 {
     $task = ponos_db_fetch_task_array($taskId, false);
     if ($task === null) {
@@ -188,7 +189,7 @@ function ponos_unarchive_task(string $groupId, string $taskId): ?array
     ponos_db()->prepare('UPDATE tasks SET done_at = ?, updated_at = ? WHERE id = ?')
         ->execute([$now, $now, $taskId]);
 
-    ponos_db_insert_system_message($taskId, LOC('ponos.system.unarchived'));
+    ponos_db_insert_system_message($taskId, LOC('ponos.system.unarchived'), $actorEmail);
 
     return ponos_get_task_for_client($groupId, $taskId);
 }
@@ -468,7 +469,7 @@ function ponos_move_task(
         ponos_db()->prepare(
             'UPDATE tasks SET group_id = ?, category_id = NULL, assignee_email = "", sort_order = ?, updated_at = ? WHERE id = ?'
         )->execute([$toGroupId, $sortOrder, $now, $taskId]);
-        ponos_db_insert_system_message($taskId, LOC('ponos.system.cleared_assignee_on_move'));
+        ponos_db_insert_system_message($taskId, LOC('ponos.system.cleared_assignee_on_move'), $editorEmail);
     } else {
         ponos_db()->prepare(
             'UPDATE tasks SET group_id = ?, category_id = NULL, sort_order = ?, updated_at = ? WHERE id = ?'
@@ -477,7 +478,8 @@ function ponos_move_task(
 
     ponos_db_insert_system_message(
         $taskId,
-        LOC('ponos.system.moved_to_group', $toGroupName !== '' ? $toGroupName : $toGroupId)
+        LOC('ponos.system.moved_to_group', $toGroupName !== '' ? $toGroupName : $toGroupId),
+        $editorEmail
     );
 
     return ponos_get_task($toGroupId, $taskId);
@@ -547,7 +549,7 @@ function ponos_create_task(
         )->execute([$taskId, $label, (int) $index]);
     }
 
-    ponos_db_insert_system_message($taskId, LOC('ponos.system.task_created', $title));
+    ponos_db_insert_system_message($taskId, LOC('ponos.system.task_created', $title), $createdBy);
 
     $task = ponos_db_fetch_task_array($taskId, true);
     if ($task === null) {
@@ -664,7 +666,11 @@ function ponos_update_task(
     ponos_db_store_uploaded_files($task, null, strtolower(trim($editorEmail)), $uploadedFiles);
 
     if ($changes !== []) {
-        ponos_db_insert_system_message($taskId, LOC('ponos.system.task_updated') . ' ' . implode('; ', $changes));
+        ponos_db_insert_system_message(
+            $taskId,
+            LOC('ponos.system.task_updated') . ' ' . implode('; ', $changes),
+            $editorEmail
+        );
     }
 
     $now = gmdate('c');
@@ -728,7 +734,8 @@ function ponos_update_task_status(string $groupId, string $taskId, string $statu
 
     ponos_db_insert_system_message(
         $taskId,
-        LOC('ponos.system.changed_status', ponos_status_label($existingStatus), ponos_status_label($status))
+        LOC('ponos.system.changed_status', ponos_status_label($existingStatus), ponos_status_label($status)),
+        $actorEmail
     );
 
     $updatedTask = ponos_get_task($groupId, $taskId);

@@ -76,6 +76,35 @@ ponos_test('ponos_list_assigned_tasks filters by assignee', function (): void {
     assert_eq($groupA['id'], $mine[0]['home_group_id']);
 });
 
+ponos_test('ponos_group_open_task_counts reports todo and in progress separately', function (): void {
+    require_once dirname(__DIR__) . '/web/ponos_storage.php';
+    ponos_db_wipe_all();
+
+    $group = ponos_create_group('Counts', 'admin@kvt.nl');
+    assert_true(is_array($group));
+
+    ponos_create_task($group['id'], 'creator@kvt.nl', [
+        'title' => 'Todo 1',
+        'description' => 'Body',
+        'status' => PONOS_STATUS_TODO,
+    ]);
+    ponos_create_task($group['id'], 'creator@kvt.nl', [
+        'title' => 'Todo 2',
+        'description' => 'Body',
+        'status' => PONOS_STATUS_TODO,
+    ]);
+    $inProgress = ponos_create_task($group['id'], 'creator@kvt.nl', [
+        'title' => 'Busy',
+        'description' => 'Body',
+    ]);
+    assert_true(is_array($inProgress));
+    ponos_update_task_status($group['id'], $inProgress['id'], PONOS_STATUS_IN_PROGRESS, 'creator@kvt.nl');
+
+    $counts = ponos_group_open_task_counts($group['id']);
+    assert_eq(2, $counts['todo']);
+    assert_eq(1, $counts['in_progress']);
+});
+
 ponos_test('ponos_create_group persists in sqlite', function (): void {
     ponos_db_wipe_all();
     $group = ponos_create_group('Persistent', 'admin@kvt.nl');

@@ -483,7 +483,7 @@ if ($action === 'unarchive_task') {
     }
     ponos_api_require_group_task_access($taskGroupId, $userEmail);
 
-    $task = ponos_unarchive_task($taskGroupId, $params['task']);
+    $task = ponos_unarchive_task($taskGroupId, $params['task'], $userEmail);
     if ($task === null) {
         ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
     }

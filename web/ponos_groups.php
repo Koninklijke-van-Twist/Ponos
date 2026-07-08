@@ -97,6 +97,50 @@ function ponos_find_group(string $groupId): ?array
     ]);
 }
 
+function ponos_group_open_task_counts(string $groupId): array
+{
+    if (ponos_is_my_tasks_group($groupId)) {
+        return ['todo' => 0, 'in_progress' => 0];
+    }
+
+    $stmt = ponos_db()->prepare(
+        'SELECT status, COUNT(*) AS cnt FROM tasks
+         WHERE group_id = ? AND status IN (?, ?)
+         GROUP BY status'
+    );
+    $stmt->execute([$groupId, PONOS_STATUS_TODO, PONOS_STATUS_IN_PROGRESS]);
+
+    $counts = ['todo' => 0, 'in_progress' => 0];
+    foreach ($stmt->fetchAll() as $row) {
+        $status = (string) ($row['status'] ?? '');
+        if ($status === PONOS_STATUS_TODO) {
+            $counts['todo'] = (int) ($row['cnt'] ?? 0);
+        } elseif ($status === PONOS_STATUS_IN_PROGRESS) {
+            $counts['in_progress'] = (int) ($row['cnt'] ?? 0);
+        }
+    }
+
+    return $counts;
+}
+
+function ponos_count_tasks_by_open_status(array $tasks): array
+{
+    $counts = ['todo' => 0, 'in_progress' => 0];
+    foreach ($tasks as $task) {
+        if (!is_array($task)) {
+            continue;
+        }
+        $status = (string) ($task['status'] ?? '');
+        if ($status === PONOS_STATUS_TODO) {
+            $counts['todo']++;
+        } elseif ($status === PONOS_STATUS_IN_PROGRESS) {
+            $counts['in_progress']++;
+        }
+    }
+
+    return $counts;
+}
+
 function ponos_group_task_count(string $groupId): int
 {
     if (ponos_is_my_tasks_group($groupId)) {
@@ -337,11 +381,14 @@ function ponos_navigation_payload(string $userEmail, ?bool $isAdmin = null): arr
     foreach ($groups as $group) {
         $entry = ponos_enrich_group_for_client($group, $userEmail, $isAdmin);
         if ($group['virtual']) {
-            $entry['task_count'] = count(ponos_list_assigned_tasks($userEmail, $isAdmin));
+            $openCounts = ponos_count_tasks_by_open_status(ponos_list_assigned_tasks($userEmail, $isAdmin));
         } else {
-            $entry['task_count'] = ponos_group_task_count($group['id']);
+            $openCounts = ponos_group_open_task_counts($group['id']);
             $entry['pinned'] = in_array($group['id'], $pinned, true);
         }
+        $entry['task_count_todo'] = $openCounts['todo'];
+        $entry['task_count_in_progress'] = $openCounts['in_progress'];
+        $entry['task_count'] = $openCounts['todo'] + $openCounts['in_progress'];
         $groupsPayload[] = $entry;
     }
 

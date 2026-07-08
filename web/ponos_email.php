@@ -11,6 +11,11 @@ require_once __DIR__ . '/ponos_data.php';
 
 function ponos_app_base_url(): string
 {
+    global $ponosBaseUrl;
+    if (isset($ponosBaseUrl) && is_string($ponosBaseUrl) && trim($ponosBaseUrl) !== '') {
+        return rtrim(trim($ponosBaseUrl), '/');
+    }
+
     $env = getenv('PONOS_BASE_URL');
     if (is_string($env) && trim($env) !== '') {
         return rtrim(trim($env), '/');
@@ -24,13 +29,13 @@ function ponos_app_base_url(): string
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
     if ($host === '') {
-        $cached = 'http://localhost/Ponos/web';
+        $cached = 'http://localhost/Ponos/web/index.php';
 
         return $cached;
     }
 
     $script = basename((string) ($_SERVER['SCRIPT_NAME'] ?? 'index.php'));
-    if (preg_match('/_(api|reminder|nightly|email)\.php$/', $script)) {
+    if ($script !== 'index.php' && str_ends_with($script, '.php')) {
         $script = 'index.php';
     }
 

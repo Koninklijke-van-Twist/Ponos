@@ -528,7 +528,7 @@ function ponos_db_next_task_sort_order(string $groupId, string $status): int
     return ((int) $stmt->fetchColumn()) + 1;
 }
 
-function ponos_db_insert_system_message(string $taskId, string $text): void
+function ponos_db_insert_system_message(string $taskId, string $text, string $actorEmail = ''): void
 {
     $text = trim($text);
     if ($text === '') {
@@ -539,11 +539,16 @@ function ponos_db_insert_system_message(string $taskId, string $text): void
         $text = mb_substr($text, 0, 8000);
     }
 
+    $email = strtolower(trim($actorEmail));
+    if ($email === '') {
+        $email = 'system@ponos.local';
+    }
+
     ponos_db()->prepare(
         'INSERT INTO messages(task_id, email, text, kind, created_at) VALUES(?, ?, ?, ?, ?)'
     )->execute([
         $taskId,
-        'system@ponos.local',
+        $email,
         $text,
         'system',
         gmdate('c'),

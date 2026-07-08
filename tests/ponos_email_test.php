@@ -13,6 +13,21 @@ ponos_test('ponos_default_email_prefs are all enabled', function (): void {
     }
 });
 
+ponos_test('ponos_app_base_url prefers ponosBaseUrl from auth', function (): void {
+    global $ponosBaseUrl;
+    $previous = $ponosBaseUrl ?? null;
+    $ponosBaseUrl = 'https://intranet.example/ponos/web/index.php';
+
+    $link = ponos_email_task_link([
+        'id' => 'task-42',
+        'group_id' => 'group-9',
+    ]);
+    assert_true(str_starts_with($link, 'https://intranet.example/ponos/web/index.php?'));
+    assert_true(str_contains($link, 'task=task-42'));
+
+    $ponosBaseUrl = $previous;
+});
+
 ponos_test('ponos_email_task_card_html includes title and link', function (): void {
     putenv('PONOS_BASE_URL=https://ponos.example/web/index.php');
     $html = ponos_email_task_card_html([
