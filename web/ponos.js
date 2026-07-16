@@ -2412,45 +2412,26 @@
         }).toString();
     }
 
-    function attachmentPreviewKind(file) {
-        const name = String(file.filename || '').toLowerCase();
-        const mime = String(file.mime || '').toLowerCase();
-        const ext = name.includes('.') ? name.split('.').pop() : '';
-        const imageExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico', 'tif', 'tiff', 'heic', 'heif'];
-        if (mime.startsWith('image/') || imageExt.indexOf(ext) >= 0) {
-            return 'image';
-        }
-        if (ext === 'md' || ext === 'markdown') {
-            return 'markdown';
-        }
-        if (ext === 'csv' || mime === 'text/csv') {
-            return 'csv';
-        }
-        const codeExt = [
-            'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'php', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs',
-            'css', 'scss', 'less', 'html', 'htm', 'xml', 'json', 'yaml', 'yml', 'sql', 'sh', 'bash', 'bat', 'ps1',
-            'vue', 'svelte', 'kt', 'swift', 'lua', 'pl', 'r', 'dart', 'zig',
-        ];
-        if (codeExt.indexOf(ext) >= 0 || mime.indexOf('json') >= 0 || mime.indexOf('xml') >= 0 || mime.indexOf('javascript') >= 0) {
-            return 'code';
-        }
-        const textExt = ['txt', 'log', 'ini', 'cfg', 'conf', 'env', 'mdown'];
-        if (textExt.indexOf(ext) >= 0 || (mime.startsWith('text/') && ext !== 'csv')) {
-            return 'text';
-        }
-        return null;
-    }
-
     function renderAttachmentLinkHtml(file, taskId) {
-        if (!attachmentPreviewKind(file)) {
-            return '<a href="' + escapeHtml(attachmentUrl(file.id, taskId)) + '">' + escapeHtml(file.filename) + '</a>';
-        }
-
         return '<button type="button" class="ponos-attachment-link"'
             + ' data-attachment-id="' + escapeAttr(String(file.id)) + '"'
             + ' data-task-id="' + escapeAttr(String(taskId || state.task || '')) + '"'
             + ' data-filename="' + escapeAttr(file.filename || '') + '">'
             + escapeHtml(file.filename) + '</button>';
+    }
+
+    function setPreviewDownloadButton(attachmentId, taskId, filename) {
+        if (!el.previewDownload) {
+            return;
+        }
+
+        el.previewDownload.href = attachmentUrl(attachmentId, taskId);
+        el.previewDownload.hidden = false;
+        if (filename) {
+            el.previewDownload.setAttribute('download', filename);
+        } else {
+            el.previewDownload.removeAttribute('download');
+        }
     }
 
     function hideAttachmentPreview() {
@@ -2463,6 +2444,11 @@
         if (el.previewBody) {
             el.previewBody.innerHTML = '';
         }
+        if (el.previewDownload) {
+            el.previewDownload.hidden = true;
+            el.previewDownload.href = '#';
+            el.previewDownload.removeAttribute('download');
+        }
     }
 
     function renderAttachmentPreview(data, attachmentId, taskId) {
@@ -2472,14 +2458,7 @@
 
         el.previewBody.className = 'ponos-preview-body';
         el.previewBody.innerHTML = '';
-        const downloadUrl = attachmentUrl(attachmentId, taskId);
-        if (el.previewDownload) {
-            el.previewDownload.href = downloadUrl;
-            el.previewDownload.hidden = false;
-            if (data.filename) {
-                el.previewDownload.setAttribute('download', data.filename);
-            }
-        }
+        setPreviewDownloadButton(attachmentId, taskId, data.filename || '');
 
         const type = data.preview_type;
         if (type === 'image') {
@@ -2554,13 +2533,7 @@
         el.previewTitle.textContent = filename || '';
         el.previewBody.className = 'ponos-preview-body is-loading';
         el.previewBody.textContent = i18n['ponos.preview.loading'] || '…';
-        if (el.previewDownload) {
-            el.previewDownload.hidden = true;
-            el.previewDownload.href = attachmentUrl(attachmentId, taskId);
-            if (filename) {
-                el.previewDownload.setAttribute('download', filename);
-            }
-        }
+        setPreviewDownloadButton(attachmentId, taskId, filename || '');
 
         try {
             const response = await fetch(apiFetchUrl('preview_attachment', {

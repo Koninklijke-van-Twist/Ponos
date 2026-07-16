@@ -567,6 +567,7 @@ foreach ($i18nKeys as $key) {
         .ponos-preview-head {
             display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px;
         }
+        .ponos-preview-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; flex-shrink: 0; }
         .ponos-preview-title { margin: 0; color: var(--kvt-perkins-blue); font-size: 1.05rem; word-break: break-word; }
         .ponos-preview-body {
             flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--kvt-line); border-radius: 10px;
@@ -830,12 +831,12 @@ foreach ($i18nKeys as $key) {
     <div class="ponos-modal-dialog ponos-modal-dialog--preview" role="dialog" aria-modal="true" aria-labelledby="ponos-preview-title">
         <div class="ponos-preview-head">
             <h3 id="ponos-preview-title" class="ponos-preview-title"></h3>
-            <button type="button" id="ponos-preview-close" class="ponos-btn ponos-btn--ghost"><?= ponos_h(LOC('ponos.preview.close')) ?></button>
+            <div class="ponos-preview-actions">
+                <a id="ponos-preview-download" class="ponos-btn" href="#" download hidden><?= ponos_h(LOC('ponos.preview.download')) ?></a>
+                <button type="button" id="ponos-preview-close" class="ponos-btn ponos-btn--ghost"><?= ponos_h(LOC('ponos.preview.close')) ?></button>
+            </div>
         </div>
         <div id="ponos-preview-body" class="ponos-preview-body is-loading"><?= ponos_h(LOC('ponos.preview.loading')) ?></div>
-        <div class="ponos-modal-actions" style="margin-top:14px;">
-            <a id="ponos-preview-download" class="ponos-btn" href="#" download hidden><?= ponos_h(LOC('ponos.preview.download')) ?></a>
-        </div>
     </div>
 </div>
 
