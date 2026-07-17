@@ -271,7 +271,7 @@
             return;
         }
 
-        state.activeTask = data.task;
+        state.activeTask = enrichMyTasksTaskMeta(data.task);
         const taskIndex = state.tasks.findIndex(function (item) { return item.id === state.task; });
         if (taskIndex >= 0) {
             state.tasks[taskIndex].unread_count = 0;
@@ -817,12 +817,45 @@
         return true;
     }
 
-    async function loadCategories() {
-        if (!state.group || isMyTasksGroup(state.group)) {
+    function taskContextGroupId(task) {
+        if (task) {
+            const fromTask = String(task.home_group_id || task.group_id || '').trim();
+            if (fromTask !== '' && !isMyTasksGroup(fromTask)) {
+                return fromTask;
+            }
+        }
+
+        return isMyTasksGroup(state.group) ? '' : String(state.group || '');
+    }
+
+    function enrichMyTasksTaskMeta(task) {
+        if (!task || !isMyTasksGroup(state.group)) {
+            return task;
+        }
+
+        const homeGroupId = taskContextGroupId(task);
+        if (homeGroupId === '') {
+            return task;
+        }
+
+        task.home_group_id = homeGroupId;
+        const group = (state.navigation && state.navigation.groups || []).find(function (item) {
+            return item.id === homeGroupId;
+        });
+        if (group) {
+            task.home_group_name = group.name;
+        }
+
+        return task;
+    }
+
+    async function loadCategories(groupId) {
+        const targetGroupId = groupId != null ? String(groupId || '') : state.group;
+        if (!targetGroupId || isMyTasksGroup(targetGroupId)) {
             state.categories = [];
             return [];
         }
-        const response = await fetch(apiFetchUrl('list_categories', { group: state.group }), {
+        const response = await fetch(apiFetchUrl('list_categories', { group: targetGroupId }), {
             credentials: 'same-origin',
             cache: 'no-store',
         });
@@ -1748,7 +1781,7 @@
             return;
         }
 
-        state.activeTask = data.task;
+        state.activeTask = enrichMyTasksTaskMeta(data.task);
         await loadTasks();
         renderTaskDetail();
     }
@@ -1977,7 +2010,7 @@
         }
         await loadTasks();
         if (state.task === taskId) {
-            state.activeTask = data.task;
+            state.activeTask = enrichMyTasksTaskMeta(data.task);
             renderTaskDetail();
         }
     }
@@ -1994,7 +2027,7 @@
             showAlert(data.error || i18n['ponos.error.load_failed']);
             return;
         }
-        state.activeTask = data.task;
+        state.activeTask = enrichMyTasksTaskMeta(data.task);
         state.editMode = false;
         const taskIndex = state.tasks.findIndex(function (item) { return item.id === taskId; });
         if (taskIndex >= 0) {
@@ -2206,6 +2239,22 @@
         return html;
     }
 
+    async function enterTaskEditMode() {
+        if (!state.activeTask) {
+            return;
+        }
+
+        const groupId = taskContextGroupId(state.activeTask);
+        if (groupId) {
+            await loadCategories(groupId);
+        } else if (isMyTasksGroup(state.group)) {
+            state.categories = [];
+        }
+
+        state.editMode = true;
+        renderTaskDetail();
+    }
+
     function buildTaskForm(task) {
         const isNew = !task || !task.id;
         let checklistHtml = '';
@@ -2216,8 +2265,8 @@
         });
 
         let usersOptions = '<option value=""></option>';
-        const homeGroupId = task && (task.home_group_id || state.group);
-        const formGroup = editableGroups().find(function (group) { return group.id === (homeGroupId || state.group); }) || currentGroupMeta();
+        const homeGroupId = taskContextGroupId(task);
+        const formGroup = editableGroups().find(function (group) { return group.id === homeGroupId; }) || currentGroupMeta();
         const assignableUsers = assignableUsersForGroup(formGroup);
         const assignableEmails = new Set(assignableUsers.map(function (user) {
             return String(user.Email || '').toLowerCase();
@@ -2294,9 +2343,12 @@
         }
 
         if (cancelButton) {
-            cancelButton.addEventListener('click', function () {
+            cancelButton.addEventListener('click', async function () {
                 if (taskId) {
                     state.editMode = false;
+                    if (isMyTasksGroup(state.group)) {
+                        state.categories = [];
+                    }
                     renderTaskDetail();
                 } else {
                     closeTaskDetail();
@@ -2338,9 +2390,12 @@
 
         await loadNavigation({ applyPrefs: false });
         await loadTasks();
-        state.activeTask = data.task;
+        state.activeTask = enrichMyTasksTaskMeta(data.task);
         state.task = data.task.id;
         state.editMode = false;
+        if (isMyTasksGroup(state.group)) {
+            state.categories = [];
+        }
         syncUrl(true);
         renderTaskDetail();
         el.detail.classList.add('is-open');
@@ -2359,7 +2414,7 @@
             showAlert(data.error || i18n['ponos.error.save_failed']);
             return;
         }
-        state.activeTask = data.task;
+        state.activeTask = enrichMyTasksTaskMeta(data.task);
         await loadTasks();
         if (!state.editMode) {
             renderTaskDetail();
@@ -2706,11 +2761,7 @@
         }
         if (el.editTask) {
             el.editTask.addEventListener('click', function () {
-                if (!state.activeTask) {
-                    return;
-                }
-                state.editMode = true;
-                renderTaskDetail();
+                enterTaskEditMode();
             });
         }
         if (el.copyLink) {

@@ -588,9 +588,15 @@ if ($action === 'update_task') {
         if ($task === null) {
             ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
         }
+        $taskGroupId = $targetGroupId;
     }
 
-    ponos_api_json(['ok' => true, 'task' => $task]);
+    if (ponos_is_my_tasks_group($params['group'])) {
+        $task['home_group_id'] = $taskGroupId;
+        $task['home_group_name'] = ponos_db_group_name($taskGroupId);
+    }
+
+    ponos_api_json(['ok' => true, 'task' => ponos_api_task_for_client($task, $userEmail)]);
 }
 
 if ($action === 'move_task') {
