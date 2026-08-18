@@ -12,3 +12,6 @@ web/data/ponos/
 web/data/user_avatars/
 
 data/
+
+web/analytics/analytics.sqlite
+web/analytics/analytics.sqlite-*
