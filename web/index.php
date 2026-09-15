@@ -643,8 +643,10 @@ foreach ($i18nKeys as $key) {
         }
         .ponos-api-key-create { display: grid; gap: 6px; margin: 0 0 12px; }
         .ponos-api-key-create-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-        .ponos-api-key-create-row input { flex: 1 1 160px; width: auto; }
+        .ponos-api-key-create-row input { flex: 1 1 160px; width: auto; min-width: 0; }
         .ponos-api-key-create-row .ponos-btn { flex: 0 0 auto; }
+        .ponos-api-key-error { margin: 0 0 12px; }
+        .ponos-api-key-error[hidden] { display: none !important; }
         .ponos-api-key-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
         .ponos-api-key-item {
             display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
@@ -855,13 +857,14 @@ foreach ($i18nKeys as $key) {
         <section class="ponos-settings-section" aria-labelledby="ponos-api-keys-title">
             <h4 id="ponos-api-keys-title"><?= ponos_h(LOC('ponos.settings.api_keys.title')) ?></h4>
             <p class="ponos-muted ponos-settings-hint"><?= ponos_h(LOC('ponos.settings.api_keys.hint')) ?></p>
-            <div class="ponos-api-key-create">
+            <form id="ponos-api-key-form" class="ponos-api-key-create">
                 <label for="ponos-api-key-label"><?= ponos_h(LOC('ponos.settings.api_keys.label')) ?></label>
                 <div class="ponos-api-key-create-row">
                     <input type="text" id="ponos-api-key-label" maxlength="80" autocomplete="off" placeholder="<?= ponos_h(LOC('ponos.settings.api_keys.label_placeholder')) ?>">
-                    <button type="button" id="ponos-api-key-create" class="ponos-btn"><?= ponos_h(LOC('ponos.settings.api_keys.create')) ?></button>
+                    <button type="submit" id="ponos-api-key-create" class="ponos-btn"><?= ponos_h(LOC('ponos.settings.api_keys.create')) ?></button>
                 </div>
-            </div>
+            </form>
+            <p id="ponos-api-key-error" class="ponos-alert ponos-api-key-error" hidden role="alert"></p>
             <div id="ponos-api-key-reveal" class="ponos-api-key-reveal" hidden>
                 <strong><?= ponos_h(LOC('ponos.settings.api_keys.reveal_title')) ?></strong>
                 <p class="ponos-muted ponos-settings-hint"><?= ponos_h(LOC('ponos.settings.api_keys.reveal_hint')) ?></p>
@@ -942,7 +945,7 @@ window.PONOS_BOOT = <?= json_encode([
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" crossorigin="anonymous">
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" crossorigin="anonymous"></script>
-<script src="ponos.js"></script>
+<script src="ponos.js?v=<?= ponos_h((string) filemtime(__DIR__ . '/ponos.js')) ?>"></script>
 <?php renderLanguageSwitcherScript(); ?>
 </body>
 </html>
