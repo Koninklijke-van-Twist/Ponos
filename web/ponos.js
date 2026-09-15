@@ -2719,12 +2719,12 @@
         }
     }
 
-    async function readApiJson(response) {
+    async function readApiJson(response, fallbackMessage) {
         const text = await response.text();
         try {
             return JSON.parse(text);
         } catch (error) {
-            throw new Error(i18n['ponos.error.save_failed']);
+            throw new Error(fallbackMessage || i18n['ponos.error.save_failed']);
         }
     }
 
@@ -2790,7 +2790,7 @@
                 cache: 'no-store',
                 headers: { Accept: 'application/json' },
             });
-            const data = await readApiJson(response);
+            const data = await readApiJson(response, i18n['ponos.error.load_failed']);
             if (!data.ok) {
                 showApiKeyError(data.error || i18n['ponos.error.load_failed']);
                 return;

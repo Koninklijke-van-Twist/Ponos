@@ -88,6 +88,8 @@ ponos_test('settings JS mints and revokes via POST body and surfaces errors in t
     assert_true(str_contains($js, 'function clearApiKeyReveal()'));
     assert_true(str_contains($js, 'function showApiKeyError('));
     assert_true(str_contains($js, 'function readApiJson('));
+    assert_true(str_contains($js, 'readApiJson(response, i18n[\'ponos.error.load_failed\'])'));
+    assert_true(str_contains($js, 'fallbackMessage || i18n[\'ponos.error.save_failed\']'));
     assert_true(str_contains($js, 'el.apiKeyPlaintext.textContent = \'\''));
     assert_true(preg_match('/function hideSettingsModal\(\) \{\s*clearApiKeyError\(\);\s*clearApiKeyReveal\(\)/s', $js) === 1);
     assert_true(str_contains($js, "el.apiKeyForm.addEventListener('submit', createApiKey)"));
