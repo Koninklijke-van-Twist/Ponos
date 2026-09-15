@@ -65,9 +65,11 @@
         settingsModal: document.getElementById('ponos-settings-modal'),
         settingsForm: document.getElementById('ponos-settings-form'),
         settingsCancel: document.getElementById('ponos-settings-cancel'),
+        apiKeyForm: document.getElementById('ponos-api-key-form'),
         apiKeyList: document.getElementById('ponos-api-key-list'),
         apiKeyLabel: document.getElementById('ponos-api-key-label'),
         apiKeyCreate: document.getElementById('ponos-api-key-create'),
+        apiKeyError: document.getElementById('ponos-api-key-error'),
         apiKeyReveal: document.getElementById('ponos-api-key-reveal'),
         apiKeyPlaintext: document.getElementById('ponos-api-key-plaintext'),
         apiKeyCopy: document.getElementById('ponos-api-key-copy'),
@@ -2688,8 +2690,21 @@
         el.detail.setAttribute('aria-hidden', 'false');
     }
 
-    function formatI18n(key, value) {
-        return String(i18n[key] || key).replace('%s', String(value));
+    function showApiKeyError(message) {
+        const text = String(message || i18n['ponos.error.save_failed'] || '');
+        if (el.apiKeyError) {
+            el.apiKeyError.hidden = false;
+            el.apiKeyError.textContent = text;
+            return;
+        }
+        showAlert(text);
+    }
+
+    function clearApiKeyError() {
+        if (el.apiKeyError) {
+            el.apiKeyError.hidden = true;
+            el.apiKeyError.textContent = '';
+        }
     }
 
     function clearApiKeyReveal() {
@@ -2701,6 +2716,15 @@
         }
         if (el.apiKeyCopy) {
             el.apiKeyCopy.textContent = i18n['ponos.settings.api_keys.copy'];
+        }
+    }
+
+    async function readApiJson(response, fallbackMessage) {
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch (error) {
+            throw new Error(fallbackMessage || i18n['ponos.error.save_failed']);
         }
     }
 
@@ -2760,19 +2784,34 @@
         if (!el.apiKeyList) {
             return;
         }
-        const response = await fetch(apiFetchUrl('list_api_keys'), {
-            credentials: 'same-origin',
-            cache: 'no-store',
-        });
-        const data = await response.json();
-        if (!data.ok) {
-            showAlert(data.error || i18n['ponos.error.load_failed']);
-            return;
+        try {
+            const response = await fetch(apiFetchUrl('list_api_keys'), {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { Accept: 'application/json' },
+            });
+            const data = await readApiJson(response, i18n['ponos.error.load_failed']);
+            if (!data.ok) {
+                showApiKeyError(data.error || i18n['ponos.error.load_failed']);
+                return;
+            }
+            renderApiKeyList(data.keys || []);
+        } catch (error) {
+            showApiKeyError((error && error.message) || i18n['ponos.error.load_failed']);
         }
-        renderApiKeyList(data.keys || []);
     }
 
-    async function createApiKey() {
+    let creatingApiKey = false;
+
+    async function createApiKey(event) {
+        if (event) {
+            event.preventDefault();
+        }
+        if (creatingApiKey) {
+            return;
+        }
+        creatingApiKey = true;
+        clearApiKeyError();
         const label = el.apiKeyLabel ? el.apiKeyLabel.value.trim() : '';
         const body = new URLSearchParams();
         body.set('action', 'create_api_key');
@@ -2785,21 +2824,32 @@
         try {
             const response = await fetch(apiUrl('create_api_key'), {
                 method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                    Accept: 'application/json',
+                },
                 body: body,
                 credentials: 'same-origin',
             });
-            const data = await response.json();
+            const data = await readApiJson(response);
             if (!data.ok) {
-                showAlert(data.error || i18n['ponos.error.save_failed']);
+                showApiKeyError(data.error || i18n['ponos.error.save_failed']);
                 return;
             }
             const plaintext = String(data.api_key || '');
+            if (plaintext === '') {
+                showApiKeyError(i18n['ponos.error.save_failed']);
+                return;
+            }
             if (el.apiKeyLabel) {
                 el.apiKeyLabel.value = '';
             }
             showApiKeyReveal(plaintext);
             await loadApiKeys();
+        } catch (error) {
+            showApiKeyError((error && error.message) || i18n['ponos.error.save_failed']);
         } finally {
+            creatingApiKey = false;
             if (el.apiKeyCreate) {
                 el.apiKeyCreate.disabled = false;
             }
@@ -2835,17 +2885,26 @@
         const body = new URLSearchParams();
         body.set('action', 'revoke_api_key');
         body.set('id', String(keyId));
-        const response = await fetch(apiUrl('revoke_api_key'), {
-            method: 'POST',
-            body: body,
-            credentials: 'same-origin',
-        });
-        const data = await response.json();
-        if (!data.ok) {
-            showAlert(data.error || i18n['ponos.error.save_failed']);
-            return;
+        try {
+            const response = await fetch(apiUrl('revoke_api_key'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                    Accept: 'application/json',
+                },
+                body: body,
+                credentials: 'same-origin',
+            });
+            const data = await readApiJson(response);
+            if (!data.ok) {
+                showApiKeyError(data.error || i18n['ponos.error.save_failed']);
+                return;
+            }
+            clearApiKeyError();
+            await loadApiKeys();
+        } catch (error) {
+            showApiKeyError((error && error.message) || i18n['ponos.error.save_failed']);
         }
-        await loadApiKeys();
     }
 
     function showSettingsModal() {
@@ -2858,6 +2917,7 @@
                 input.checked = !!state.emailPrefs[key];
             }
         });
+        clearApiKeyError();
         clearApiKeyReveal();
         if (el.settingsModal) {
             el.settingsModal.hidden = false;
@@ -2867,6 +2927,7 @@
     }
 
     function hideSettingsModal() {
+        clearApiKeyError();
         clearApiKeyReveal();
         if (el.settingsModal) {
             el.settingsModal.hidden = true;
@@ -2992,16 +3053,11 @@
                 }
             });
         }
+        if (el.apiKeyForm) {
+            el.apiKeyForm.addEventListener('submit', createApiKey);
+        }
         if (el.apiKeyCreate) {
             el.apiKeyCreate.addEventListener('click', createApiKey);
-        }
-        if (el.apiKeyLabel) {
-            el.apiKeyLabel.addEventListener('keydown', function (event) {
-                if (event.key === 'Enter') {
-                    event.preventDefault();
-                    createApiKey();
-                }
-            });
         }
         if (el.apiKeyCopy) {
             el.apiKeyCopy.addEventListener('click', copyApiKeyPlaintext);
