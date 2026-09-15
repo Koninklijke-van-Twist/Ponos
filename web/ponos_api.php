@@ -30,7 +30,11 @@ function ponos_api_json(array $payload, int $status = 200): void
 /**
  * Page load — public spec (no login, no API key)
  */
-ponos_api_merge_json_body();
+$jsonBodyStatus = ponos_api_merge_json_body();
+if ($jsonBodyStatus === 'invalid') {
+    ponos_api_json(['ok' => false, 'error' => 'Invalid JSON body'], 400);
+}
+
 $action = trim((string) ($_GET['action'] ?? $_POST['action'] ?? ''));
 if ($action === '' || $action === 'help' || $action === 'spec') {
     ponos_api_json(ponos_api_help());

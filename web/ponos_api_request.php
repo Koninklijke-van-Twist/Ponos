@@ -4,11 +4,11 @@
  * Functies
  */
 
-function ponos_api_merge_json_body(?string $rawBody = null): void
+function ponos_api_merge_json_body(?string $rawBody = null): string
 {
     $contentType = strtolower(trim((string) ($_SERVER['CONTENT_TYPE'] ?? '')));
     if ($contentType !== '' && !str_contains($contentType, 'application/json')) {
-        return;
+        return 'skipped';
     }
 
     $raw = $rawBody;
@@ -16,17 +16,17 @@ function ponos_api_merge_json_body(?string $rawBody = null): void
         $raw = file_get_contents('php://input');
     }
     if (!is_string($raw) || trim($raw) === '') {
-        return;
+        return 'empty';
     }
 
     $trimmed = ltrim($raw);
     if ($contentType === '' && !str_starts_with($trimmed, '{') && !str_starts_with($trimmed, '[')) {
-        return;
+        return 'empty';
     }
 
     $decoded = json_decode($raw, true);
-    if (!is_array($decoded)) {
-        return;
+    if (!is_array($decoded) || array_is_list($decoded)) {
+        return 'invalid';
     }
 
     foreach ($decoded as $key => $value) {
@@ -51,10 +51,12 @@ function ponos_api_merge_json_body(?string $rawBody = null): void
         }
 
         $_POST[$key] = $scalar;
-        if (!array_key_exists($key, $_GET)) {
+        if ($key !== 'api_key' && !array_key_exists($key, $_GET)) {
             $_GET[$key] = $scalar;
         }
     }
+
+    return 'ok';
 }
 
 function ponos_api_request_api_key(): string
@@ -86,5 +88,5 @@ function ponos_api_request_api_key(): string
         return trim((string) ($matches[1] ?? ''));
     }
 
-    return trim((string) ($_POST['api_key'] ?? $_GET['api_key'] ?? ''));
+    return trim((string) ($_POST['api_key'] ?? ''));
 }

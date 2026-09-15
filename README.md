@@ -34,7 +34,7 @@ Bots gebruiken een **vaste API-key**, niet de roterende dagelijkse login-key van
 
 - Header: `X-API-Key: ponos_…`
 - Of: `Authorization: Bearer ponos_…`
-- Of query/body: `api_key`
+- Of JSON/form body field `api_key` (niet in de querystring)
 
 De key hoort bij een gebruikers-e-mail. Groepstoegang en "Mijn Taken" volgen die gebruiker. De web-UI blijft via de Office365-sessie werken (`logincheck.php` wordt overgeslagen als een geldige API-key aanwezig is).
 

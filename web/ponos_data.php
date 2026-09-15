@@ -33,13 +33,6 @@ function ponos_set_request_user(string $email): void
     }
 
     $GLOBALS['ponos_request_user_email'] = $email;
-
-    if (session_status() === PHP_SESSION_ACTIVE) {
-        if (!is_array($_SESSION['user'] ?? null)) {
-            $_SESSION['user'] = [];
-        }
-        $_SESSION['user']['email'] = $email;
-    }
 }
 
 function ponos_current_user_email(): string

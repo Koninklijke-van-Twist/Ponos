@@ -90,7 +90,7 @@ function ponos_api_help(): array
         ],
         'auth' => [
             'header' => 'X-API-Key',
-            'or' => 'api_key query/body field',
+            'or' => 'api_key JSON or form body field (not query string)',
             'bearer' => 'Authorization: Bearer <key>',
             'durable_keys' => 'Fixed Ponos API keys (prefix ponos_). Hashed at rest (sha256). Suitable for a Grok bot keystore. Not the rotating daily login analytics key.',
             'session' => 'Browser Office365 session cookie still works for the web UI. Bots should use X-API-Key and skip cookies.',
@@ -110,7 +110,7 @@ function ponos_api_help(): array
                 ],
                 'api_key' => [
                     'required' => true,
-                    'how' => 'X-API-Key, Authorization Bearer, or api_key = durable Ponos key minted for a user email',
+                    'how' => 'X-API-Key or Authorization Bearer. Optional JSON/form body field api_key. Never put the key in the query string.',
                     'actions' => 'all task/group actions below, plus whoami and api-key management for that user',
                 ],
                 'human_session' => [
@@ -143,6 +143,7 @@ function ponos_api_help(): array
             $forbidden,
             $notFound,
             ['status' => 400, 'when' => 'unknown action or invalid input'],
+            ['status' => 400, 'error' => 'Invalid JSON body', 'when' => 'Content-Type application/json with malformed JSON or a non-object body'],
             ['status' => 409, 'when' => 'delete_group needs confirm=1'],
         ],
         'actions' => [

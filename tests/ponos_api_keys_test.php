@@ -65,9 +65,10 @@ ponos_test('ponos_api_key_email_is_allowed respects allowedUsers when set', func
     }
 });
 
-ponos_test('ponos_api_request_api_key reads header query and bearer', function (): void {
+ponos_test('ponos_api_request_api_key reads header and bearer, not query string', function (): void {
     $_SERVER['HTTP_X_API_KEY'] = ' ponos_header ';
     $_GET['api_key'] = 'from-query';
+    $_POST['api_key'] = 'from-body';
     assert_eq('ponos_header', ponos_api_request_api_key());
     unset($_SERVER['HTTP_X_API_KEY']);
 
@@ -75,17 +76,20 @@ ponos_test('ponos_api_request_api_key reads header query and bearer', function (
     assert_eq('ponos_bearer_token', ponos_api_request_api_key());
     unset($_SERVER['HTTP_AUTHORIZATION']);
 
-    $_POST = [];
+    $_POST = ['api_key' => 'from-body'];
     $_GET = ['api_key' => 'from-query'];
-    assert_eq('from-query', ponos_api_request_api_key());
+    assert_eq('from-body', ponos_api_request_api_key());
+    $_POST = [];
+    assert_eq('', ponos_api_request_api_key());
     unset($_GET['api_key']);
 });
 
-ponos_test('ponos_set_request_user overrides session email for API-key identity', function (): void {
+ponos_test('ponos_set_request_user does not mutate the browser session', function (): void {
     ponos_ensure_session();
     $_SESSION['user'] = ['email' => 'session@kvt.nl'];
     ponos_set_request_user('api-bot@kvt.nl');
     assert_eq('api-bot@kvt.nl', ponos_current_user_email());
+    assert_eq('session@kvt.nl', $_SESSION['user']['email']);
     ponos_set_request_user('');
     assert_eq('session@kvt.nl', ponos_current_user_email());
     unset($_SESSION['user']);
