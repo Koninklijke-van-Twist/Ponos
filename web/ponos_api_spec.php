@@ -96,10 +96,12 @@ function ponos_api_help(): array
             'session' => 'Browser Office365 session cookie still works for the web UI. Bots should use X-API-Key and skip cookies.',
             'identity' => 'A key acts as the user_email it was minted for. Group access and assignee filters follow that user.',
             'mint' => [
+                'ui' => 'Ponos settings panel (gear icon): create, list, and revoke keys while logged in. Primary path for humans. Plaintext is shown once in the UI.',
                 'cli' => 'php web/ponos_api_key.php create EMAIL [label]',
                 'cli_list' => 'php web/ponos_api_key.php list [EMAIL]',
                 'cli_revoke' => 'php web/ponos_api_key.php revoke ID [EMAIL]',
-                'api' => 'POST action=create_api_key with a browser session or an existing key of the same user. Plaintext is returned once.',
+                'cli_note' => 'CLI is an optional admin fallback; prefer the settings UI.',
+                'api' => 'POST action=create_api_key with a browser session or an existing key of the same user. Plaintext is returned once. Do not put the key in the query string.',
                 'storage' => 'web/data/ponos/ponos.sqlite table api_keys; only sha256 hash + prefix stored',
             ],
             'roles' => [

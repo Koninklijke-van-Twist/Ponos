@@ -65,6 +65,13 @@
         settingsModal: document.getElementById('ponos-settings-modal'),
         settingsForm: document.getElementById('ponos-settings-form'),
         settingsCancel: document.getElementById('ponos-settings-cancel'),
+        apiKeyList: document.getElementById('ponos-api-key-list'),
+        apiKeyLabel: document.getElementById('ponos-api-key-label'),
+        apiKeyCreate: document.getElementById('ponos-api-key-create'),
+        apiKeyReveal: document.getElementById('ponos-api-key-reveal'),
+        apiKeyPlaintext: document.getElementById('ponos-api-key-plaintext'),
+        apiKeyCopy: document.getElementById('ponos-api-key-copy'),
+        apiKeyDismiss: document.getElementById('ponos-api-key-dismiss'),
         detail: document.getElementById('ponos-detail'),
         detailTitle: document.getElementById('ponos-detail-title'),
         detailMeta: document.getElementById('ponos-detail-meta'),
@@ -2681,6 +2688,163 @@
         el.detail.setAttribute('aria-hidden', 'false');
     }
 
+    function formatI18n(key, value) {
+        return String(i18n[key] || key).replace('%s', String(value));
+    }
+
+    function clearApiKeyReveal() {
+        if (el.apiKeyPlaintext) {
+            el.apiKeyPlaintext.textContent = '';
+        }
+        if (el.apiKeyReveal) {
+            el.apiKeyReveal.hidden = true;
+        }
+        if (el.apiKeyCopy) {
+            el.apiKeyCopy.textContent = i18n['ponos.settings.api_keys.copy'];
+        }
+    }
+
+    function showApiKeyReveal(plaintext) {
+        const value = String(plaintext || '');
+        if (value === '' || !el.apiKeyPlaintext || !el.apiKeyReveal) {
+            return;
+        }
+        el.apiKeyPlaintext.textContent = value;
+        el.apiKeyReveal.hidden = false;
+    }
+
+    function renderApiKeyList(keys) {
+        if (!el.apiKeyList) {
+            return;
+        }
+        el.apiKeyList.innerHTML = '';
+        const rows = Array.isArray(keys) ? keys : [];
+        if (rows.length === 0) {
+            const empty = document.createElement('li');
+            empty.className = 'ponos-muted';
+            empty.textContent = i18n['ponos.settings.api_keys.empty'];
+            el.apiKeyList.appendChild(empty);
+            return;
+        }
+        rows.forEach(function (key) {
+            const item = document.createElement('li');
+            item.className = 'ponos-api-key-item';
+            const info = document.createElement('div');
+            const label = document.createElement('div');
+            label.className = 'ponos-api-key-item-label';
+            label.textContent = String(key.label || '');
+            const meta = document.createElement('div');
+            meta.className = 'ponos-muted ponos-api-key-item-meta';
+            meta.textContent = formatI18n('ponos.settings.api_keys.id', key.id)
+                + ' · '
+                + formatI18n('ponos.settings.api_keys.created', formatTimestamp(key.created_at));
+            info.appendChild(label);
+            info.appendChild(meta);
+            const revokeBtn = document.createElement('button');
+            revokeBtn.type = 'button';
+            revokeBtn.className = 'ponos-btn ponos-btn--ghost';
+            revokeBtn.textContent = i18n['ponos.settings.api_keys.revoke'];
+            revokeBtn.addEventListener('click', function () {
+                revokeApiKey(key.id);
+            });
+            item.appendChild(info);
+            item.appendChild(revokeBtn);
+            el.apiKeyList.appendChild(item);
+        });
+    }
+
+    async function loadApiKeys() {
+        if (!el.apiKeyList) {
+            return;
+        }
+        const response = await fetch(apiFetchUrl('list_api_keys'), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
+        const data = await response.json();
+        if (!data.ok) {
+            showAlert(data.error || i18n['ponos.error.load_failed']);
+            return;
+        }
+        renderApiKeyList(data.keys || []);
+    }
+
+    async function createApiKey() {
+        const label = el.apiKeyLabel ? el.apiKeyLabel.value.trim() : '';
+        const body = new URLSearchParams();
+        body.set('action', 'create_api_key');
+        if (label !== '') {
+            body.set('label', label);
+        }
+        if (el.apiKeyCreate) {
+            el.apiKeyCreate.disabled = true;
+        }
+        try {
+            const response = await fetch(apiUrl('create_api_key'), {
+                method: 'POST',
+                body: body,
+                credentials: 'same-origin',
+            });
+            const data = await response.json();
+            if (!data.ok) {
+                showAlert(data.error || i18n['ponos.error.save_failed']);
+                return;
+            }
+            const plaintext = String(data.api_key || '');
+            if (el.apiKeyLabel) {
+                el.apiKeyLabel.value = '';
+            }
+            showApiKeyReveal(plaintext);
+            await loadApiKeys();
+        } finally {
+            if (el.apiKeyCreate) {
+                el.apiKeyCreate.disabled = false;
+            }
+        }
+    }
+
+    async function copyApiKeyPlaintext() {
+        const value = el.apiKeyPlaintext ? String(el.apiKeyPlaintext.textContent || '') : '';
+        if (value === '' || !el.apiKeyCopy) {
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(value);
+            el.apiKeyCopy.textContent = i18n['ponos.settings.api_keys.copied'];
+            window.setTimeout(function () {
+                if (el.apiKeyCopy) {
+                    el.apiKeyCopy.textContent = i18n['ponos.settings.api_keys.copy'];
+                }
+            }, 2000);
+        } catch (error) {
+            showAlert(i18n['ponos.error.save_failed']);
+        }
+    }
+
+    async function revokeApiKey(id) {
+        const keyId = parseInt(String(id || ''), 10);
+        if (!keyId) {
+            return;
+        }
+        if (!window.confirm(i18n['ponos.settings.api_keys.revoke_confirm'])) {
+            return;
+        }
+        const body = new URLSearchParams();
+        body.set('action', 'revoke_api_key');
+        body.set('id', String(keyId));
+        const response = await fetch(apiUrl('revoke_api_key'), {
+            method: 'POST',
+            body: body,
+            credentials: 'same-origin',
+        });
+        const data = await response.json();
+        if (!data.ok) {
+            showAlert(data.error || i18n['ponos.error.save_failed']);
+            return;
+        }
+        await loadApiKeys();
+    }
+
     function showSettingsModal() {
         if (!el.settingsForm) {
             return;
@@ -2691,13 +2855,16 @@
                 input.checked = !!state.emailPrefs[key];
             }
         });
+        clearApiKeyReveal();
         if (el.settingsModal) {
             el.settingsModal.hidden = false;
             el.settingsModal.setAttribute('aria-hidden', 'false');
         }
+        loadApiKeys();
     }
 
     function hideSettingsModal() {
+        clearApiKeyReveal();
         if (el.settingsModal) {
             el.settingsModal.hidden = true;
             el.settingsModal.setAttribute('aria-hidden', 'true');
@@ -2821,6 +2988,23 @@
                     hideSettingsModal();
                 }
             });
+        }
+        if (el.apiKeyCreate) {
+            el.apiKeyCreate.addEventListener('click', createApiKey);
+        }
+        if (el.apiKeyLabel) {
+            el.apiKeyLabel.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    createApiKey();
+                }
+            });
+        }
+        if (el.apiKeyCopy) {
+            el.apiKeyCopy.addEventListener('click', copyApiKeyPlaintext);
+        }
+        if (el.apiKeyDismiss) {
+            el.apiKeyDismiss.addEventListener('click', clearApiKeyReveal);
         }
         if (el.devAdminToggle) {
             el.devAdminToggle.addEventListener('change', function () {

@@ -42,27 +42,24 @@ Keys worden als SHA-256-hash in `web/data/ponos/ponos.sqlite` opgeslagen. De pla
 
 ### Key aanmaken voor Sec-Bot
 
-Op de server:
+**Primair:** inloggen in Ponos → tandwiel (Instellingen) → **API-sleutels**. Daar kun je een sleutel aanmaken (plaintext één keer zichtbaar), bestaande sleutels zien (id, naam, datum — nooit opnieuw de volledige key) en intrekken. Bewaar de getoonde `ponos_…` key in de Grok-keystore.
+
+Optioneel admin-fallback op de server (CLI):
 
 ```
 php web/ponos_api_key.php create tfalken@kvt.nl Sec-Bot
+php web/ponos_api_key.php list tfalken@kvt.nl
+php web/ponos_api_key.php revoke ID tfalken@kvt.nl
 ```
 
-Bewaar de getoonde `ponos_…` key in de Grok-keystore. Daarna:
+Daarna:
 
 ```
 GET ponos_api.php?action=whoami
 X-API-Key: ponos_…
 ```
 
-Lijst/intrekken:
-
-```
-php web/ponos_api_key.php list tfalken@kvt.nl
-php web/ponos_api_key.php revoke ID tfalken@kvt.nl
-```
-
-Ingelogd via de UI kan hetzelfde met `create_api_key` / `list_api_keys` / `revoke_api_key`.
+De UI gebruikt dezelfde session-auth acties `create_api_key` / `list_api_keys` / `revoke_api_key` (POST, geen key in de querystring).
 
 ### Taken organiseren
 

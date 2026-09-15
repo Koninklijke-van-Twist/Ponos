@@ -33,9 +33,16 @@ $i18nKeys = [
     'ponos.label.group', 'ponos.group.new_title', 'ponos.group.rename_title',
     'ponos.group.delete_confirm_title', 'ponos.group.delete_confirm_message',
     'ponos.group.delete_confirm_yes', 'ponos.group.delete_confirm_no',
-    'ponos.settings.title', 'ponos.settings.assigned', 'ponos.settings.status_changed',
-    'ponos.settings.message', 'ponos.settings.checklist', 'ponos.settings.daily_reminder',
-    'ponos.settings.hint', 'ponos.pin.pin', 'ponos.pin.unpin',
+    'ponos.settings.title', 'ponos.settings.email_title', 'ponos.settings.assigned',
+    'ponos.settings.status_changed', 'ponos.settings.message', 'ponos.settings.checklist',
+    'ponos.settings.daily_reminder', 'ponos.settings.hint',
+    'ponos.settings.api_keys.title', 'ponos.settings.api_keys.hint', 'ponos.settings.api_keys.label',
+    'ponos.settings.api_keys.label_placeholder', 'ponos.settings.api_keys.create',
+    'ponos.settings.api_keys.empty', 'ponos.settings.api_keys.id', 'ponos.settings.api_keys.created',
+    'ponos.settings.api_keys.revoke', 'ponos.settings.api_keys.revoke_confirm',
+    'ponos.settings.api_keys.reveal_title', 'ponos.settings.api_keys.reveal_hint',
+    'ponos.settings.api_keys.copy', 'ponos.settings.api_keys.copied', 'ponos.settings.api_keys.dismiss',
+    'ponos.pin.pin', 'ponos.pin.unpin',
     'ponos.label.category', 'ponos.field.category', 'ponos.category.uncategorized', 'ponos.btn.new_category',
     'ponos.category.admin_title', 'ponos.category.new_title', 'ponos.category.rename_title',
     'ponos.empty.no_categories', 'ponos.reminder.confirm', 'ponos.reminder.yes', 'ponos.reminder.yes_always',
@@ -625,6 +632,39 @@ foreach ($i18nKeys as $key) {
             flex: 1 1 auto; line-height: 1.45; text-align: left;
         }
         .ponos-settings-hint { margin: 0 0 14px; font-size: 0.88rem; }
+        .ponos-modal-dialog--settings {
+            width: min(520px, 96vw); max-height: min(88vh, 740px); overflow: auto;
+        }
+        .ponos-modal-dialog--settings h4 {
+            margin: 0 0 8px; color: var(--kvt-perkins-blue); font-size: 0.95rem;
+        }
+        .ponos-settings-section + .ponos-settings-section {
+            margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--kvt-line);
+        }
+        .ponos-api-key-create { display: grid; gap: 6px; margin: 0 0 12px; }
+        .ponos-api-key-create-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .ponos-api-key-create-row input { flex: 1 1 160px; width: auto; }
+        .ponos-api-key-create-row .ponos-btn { flex: 0 0 auto; }
+        .ponos-api-key-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+        .ponos-api-key-item {
+            display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
+            border: 1px solid var(--kvt-line); border-radius: 10px; padding: 8px 10px; background: #fff;
+        }
+        .ponos-api-key-item-label { font-weight: 700; color: var(--kvt-perkins-blue); }
+        .ponos-api-key-item-meta { margin-top: 2px; font-size: 0.82rem; }
+        .ponos-api-key-reveal {
+            display: grid; gap: 8px; margin: 0 0 12px; padding: 12px;
+            border: 1px solid var(--kvt-perkins-blue); border-radius: 12px; background: #f0f7ff;
+        }
+        .ponos-api-key-reveal[hidden] { display: none !important; }
+        .ponos-api-key-reveal strong { color: var(--kvt-perkins-blue); }
+        .ponos-api-key-plaintext {
+            display: block; word-break: break-all;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.82rem; line-height: 1.45; background: #fff;
+            border: 1px solid var(--kvt-line); border-radius: 8px; padding: 8px 10px;
+        }
+        .ponos-api-key-reveal .ponos-settings-hint { margin: 0; }
         @media (max-width: 960px) {
             .ponos-body { grid-template-columns: 1fr; }
             .ponos-sidebar { border-right: 0; border-bottom: 1px solid var(--kvt-line); max-height: 280px; }
@@ -794,20 +834,44 @@ foreach ($i18nKeys as $key) {
 </div>
 
 <div id="ponos-settings-modal" class="ponos-modal-overlay" hidden aria-hidden="true">
-    <div class="ponos-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="ponos-settings-modal-title">
+    <div class="ponos-modal-dialog ponos-modal-dialog--settings" role="dialog" aria-modal="true" aria-labelledby="ponos-settings-modal-title">
         <h3 id="ponos-settings-modal-title"><?= ponos_h(LOC('ponos.settings.title')) ?></h3>
-        <p class="ponos-muted ponos-settings-hint"><?= ponos_h(LOC('ponos.settings.hint')) ?></p>
-        <form id="ponos-settings-form" class="ponos-settings-checkboxes">
-            <label><input type="checkbox" name="assigned" value="1"> <span><?= ponos_h(LOC('ponos.settings.assigned')) ?></span></label>
-            <label><input type="checkbox" name="status_changed" value="1"> <span><?= ponos_h(LOC('ponos.settings.status_changed')) ?></span></label>
-            <label><input type="checkbox" name="message" value="1"> <span><?= ponos_h(LOC('ponos.settings.message')) ?></span></label>
-            <label><input type="checkbox" name="checklist" value="1"> <span><?= ponos_h(LOC('ponos.settings.checklist')) ?></span></label>
-            <label><input type="checkbox" name="daily_reminder" value="1"> <span><?= ponos_h(LOC('ponos.settings.daily_reminder')) ?></span></label>
-            <div class="ponos-modal-actions">
-                <button type="submit" class="ponos-btn"><?= ponos_h(LOC('ponos.btn.save')) ?></button>
-                <button type="button" id="ponos-settings-cancel" class="ponos-btn ponos-btn--ghost"><?= ponos_h(LOC('ponos.btn.cancel')) ?></button>
+        <section class="ponos-settings-section" aria-labelledby="ponos-settings-email-title">
+            <h4 id="ponos-settings-email-title"><?= ponos_h(LOC('ponos.settings.email_title')) ?></h4>
+            <p class="ponos-muted ponos-settings-hint"><?= ponos_h(LOC('ponos.settings.hint')) ?></p>
+            <form id="ponos-settings-form" class="ponos-settings-checkboxes">
+                <label><input type="checkbox" name="assigned" value="1"> <span><?= ponos_h(LOC('ponos.settings.assigned')) ?></span></label>
+                <label><input type="checkbox" name="status_changed" value="1"> <span><?= ponos_h(LOC('ponos.settings.status_changed')) ?></span></label>
+                <label><input type="checkbox" name="message" value="1"> <span><?= ponos_h(LOC('ponos.settings.message')) ?></span></label>
+                <label><input type="checkbox" name="checklist" value="1"> <span><?= ponos_h(LOC('ponos.settings.checklist')) ?></span></label>
+                <label><input type="checkbox" name="daily_reminder" value="1"> <span><?= ponos_h(LOC('ponos.settings.daily_reminder')) ?></span></label>
+                <div class="ponos-modal-actions">
+                    <button type="submit" class="ponos-btn"><?= ponos_h(LOC('ponos.btn.save')) ?></button>
+                    <button type="button" id="ponos-settings-cancel" class="ponos-btn ponos-btn--ghost"><?= ponos_h(LOC('ponos.btn.cancel')) ?></button>
+                </div>
+            </form>
+        </section>
+        <section class="ponos-settings-section" aria-labelledby="ponos-api-keys-title">
+            <h4 id="ponos-api-keys-title"><?= ponos_h(LOC('ponos.settings.api_keys.title')) ?></h4>
+            <p class="ponos-muted ponos-settings-hint"><?= ponos_h(LOC('ponos.settings.api_keys.hint')) ?></p>
+            <div id="ponos-api-key-reveal" class="ponos-api-key-reveal" hidden>
+                <strong><?= ponos_h(LOC('ponos.settings.api_keys.reveal_title')) ?></strong>
+                <p class="ponos-muted ponos-settings-hint"><?= ponos_h(LOC('ponos.settings.api_keys.reveal_hint')) ?></p>
+                <code id="ponos-api-key-plaintext" class="ponos-api-key-plaintext"></code>
+                <div class="ponos-modal-actions" style="margin-top:4px;">
+                    <button type="button" id="ponos-api-key-copy" class="ponos-btn"><?= ponos_h(LOC('ponos.settings.api_keys.copy')) ?></button>
+                    <button type="button" id="ponos-api-key-dismiss" class="ponos-btn ponos-btn--ghost"><?= ponos_h(LOC('ponos.settings.api_keys.dismiss')) ?></button>
+                </div>
             </div>
-        </form>
+            <div class="ponos-api-key-create">
+                <label for="ponos-api-key-label"><?= ponos_h(LOC('ponos.settings.api_keys.label')) ?></label>
+                <div class="ponos-api-key-create-row">
+                    <input type="text" id="ponos-api-key-label" maxlength="80" autocomplete="off" placeholder="<?= ponos_h(LOC('ponos.settings.api_keys.label_placeholder')) ?>">
+                    <button type="button" id="ponos-api-key-create" class="ponos-btn"><?= ponos_h(LOC('ponos.settings.api_keys.create')) ?></button>
+                </div>
+            </div>
+            <ul id="ponos-api-key-list" class="ponos-api-key-list"></ul>
+        </section>
     </div>
 </div>
 

@@ -15,6 +15,8 @@ ponos_test('ponos_api_help documents task CRUD and durable API-key auth', functi
     assert_false(str_contains(strtolower((string) $spec['auth']['or']), 'query/body'));
     assert_true(str_contains((string) $spec['auth']['durable_keys'], 'sha256'));
     assert_true(str_contains((string) $spec['auth']['mint']['cli'], 'ponos_api_key.php create'));
+    assert_true(str_contains(strtolower((string) $spec['auth']['mint']['ui']), 'settings'));
+    assert_true(str_contains(strtolower((string) $spec['auth']['mint']['cli_note']), 'fallback'));
 
     $requiredActions = [
         'help', 'spec', 'whoami', 'navigation',
