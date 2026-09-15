@@ -647,9 +647,10 @@ foreach ($i18nKeys as $key) {
         .ponos-api-key-create-row .ponos-btn { flex: 0 0 auto; }
         .ponos-api-key-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
         .ponos-api-key-item {
-            display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
+            display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
             border: 1px solid var(--kvt-line); border-radius: 10px; padding: 8px 10px; background: #fff;
         }
+        .ponos-api-key-item > div:first-child { flex: 1 1 140px; min-width: 0; }
         .ponos-api-key-item-label { font-weight: 700; color: var(--kvt-perkins-blue); }
         .ponos-api-key-item-meta { margin-top: 2px; font-size: 0.82rem; }
         .ponos-api-key-reveal {
@@ -854,6 +855,13 @@ foreach ($i18nKeys as $key) {
         <section class="ponos-settings-section" aria-labelledby="ponos-api-keys-title">
             <h4 id="ponos-api-keys-title"><?= ponos_h(LOC('ponos.settings.api_keys.title')) ?></h4>
             <p class="ponos-muted ponos-settings-hint"><?= ponos_h(LOC('ponos.settings.api_keys.hint')) ?></p>
+            <div class="ponos-api-key-create">
+                <label for="ponos-api-key-label"><?= ponos_h(LOC('ponos.settings.api_keys.label')) ?></label>
+                <div class="ponos-api-key-create-row">
+                    <input type="text" id="ponos-api-key-label" maxlength="80" autocomplete="off" placeholder="<?= ponos_h(LOC('ponos.settings.api_keys.label_placeholder')) ?>">
+                    <button type="button" id="ponos-api-key-create" class="ponos-btn"><?= ponos_h(LOC('ponos.settings.api_keys.create')) ?></button>
+                </div>
+            </div>
             <div id="ponos-api-key-reveal" class="ponos-api-key-reveal" hidden>
                 <strong><?= ponos_h(LOC('ponos.settings.api_keys.reveal_title')) ?></strong>
                 <p class="ponos-muted ponos-settings-hint"><?= ponos_h(LOC('ponos.settings.api_keys.reveal_hint')) ?></p>
@@ -861,13 +869,6 @@ foreach ($i18nKeys as $key) {
                 <div class="ponos-modal-actions" style="margin-top:4px;">
                     <button type="button" id="ponos-api-key-copy" class="ponos-btn"><?= ponos_h(LOC('ponos.settings.api_keys.copy')) ?></button>
                     <button type="button" id="ponos-api-key-dismiss" class="ponos-btn ponos-btn--ghost"><?= ponos_h(LOC('ponos.settings.api_keys.dismiss')) ?></button>
-                </div>
-            </div>
-            <div class="ponos-api-key-create">
-                <label for="ponos-api-key-label"><?= ponos_h(LOC('ponos.settings.api_keys.label')) ?></label>
-                <div class="ponos-api-key-create-row">
-                    <input type="text" id="ponos-api-key-label" maxlength="80" autocomplete="off" placeholder="<?= ponos_h(LOC('ponos.settings.api_keys.label_placeholder')) ?>">
-                    <button type="button" id="ponos-api-key-create" class="ponos-btn"><?= ponos_h(LOC('ponos.settings.api_keys.create')) ?></button>
                 </div>
             </div>
             <ul id="ponos-api-key-list" class="ponos-api-key-list"></ul>

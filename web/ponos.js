@@ -2711,6 +2711,9 @@
         }
         el.apiKeyPlaintext.textContent = value;
         el.apiKeyReveal.hidden = false;
+        if (typeof el.apiKeyReveal.scrollIntoView === 'function') {
+            el.apiKeyReveal.scrollIntoView({ block: 'nearest' });
+        }
     }
 
     function renderApiKeyList(keys) {
