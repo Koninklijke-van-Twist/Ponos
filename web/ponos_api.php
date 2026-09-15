@@ -7,19 +7,8 @@ error_reporting(E_ALL);
 /**
  * Includes/requires
  */
-require_once __DIR__ . '/auth.php';
-require_once __DIR__ . '/logincheck.php';
-require_once __DIR__ . '/localization.php';
-require_once __DIR__ . '/ponos_data.php';
-require_once __DIR__ . '/ponos_storage.php';
-require_once __DIR__ . '/ponos_groups.php';
-require_once __DIR__ . '/ponos_categories.php';
-require_once __DIR__ . '/ponos_access.php';
-require_once __DIR__ . '/ponos_notify.php';
-require_once __DIR__ . '/ponos_reads.php';
-require_once __DIR__ . '/ponos_email_queue.php';
-require_once __DIR__ . '/ponos_stats.php';
-require_once __DIR__ . '/ponos_attachments.php';
+require_once __DIR__ . '/ponos_api_request.php';
+require_once __DIR__ . '/ponos_api_spec.php';
 
 /**
  * Functies
@@ -37,6 +26,29 @@ function ponos_api_json(array $payload, int $status = 200): void
     echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
+
+/**
+ * Page load — public spec (no login, no API key)
+ */
+ponos_api_merge_json_body();
+$action = trim((string) ($_GET['action'] ?? $_POST['action'] ?? ''));
+if ($action === '' || $action === 'help' || $action === 'spec') {
+    ponos_api_json(ponos_api_help());
+}
+
+require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/localization.php';
+require_once __DIR__ . '/ponos_data.php';
+require_once __DIR__ . '/ponos_api_keys.php';
+require_once __DIR__ . '/ponos_storage.php';
+require_once __DIR__ . '/ponos_groups.php';
+require_once __DIR__ . '/ponos_categories.php';
+require_once __DIR__ . '/ponos_access.php';
+require_once __DIR__ . '/ponos_notify.php';
+require_once __DIR__ . '/ponos_reads.php';
+require_once __DIR__ . '/ponos_email_queue.php';
+require_once __DIR__ . '/ponos_stats.php';
+require_once __DIR__ . '/ponos_attachments.php';
 
 function ponos_api_require_params(array $keys): array
 {
@@ -148,9 +160,72 @@ function ponos_api_task_for_client(array $task, string $userEmail): array
  * Page load
  */
 
+$presentedApiKey = ponos_api_request_api_key();
+$authViaApiKey = false;
+if ($presentedApiKey !== '') {
+    $apiKeyRecord = ponos_api_key_authenticate($presentedApiKey);
+    if ($apiKeyRecord === null || !ponos_api_key_email_is_allowed((string) $apiKeyRecord['user_email'])) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.unauthorized')], 401);
+    }
+
+    ponos_api_apply_authenticated_user((string) $apiKeyRecord['user_email']);
+    $authViaApiKey = true;
+} else {
+    require_once __DIR__ . '/logincheck.php';
+}
+
 $action = trim((string) ($_GET['action'] ?? $_POST['action'] ?? ''));
+if ($action === 'complete_task') {
+    $_POST['status'] = PONOS_STATUS_DONE;
+    if (!array_key_exists('status', $_GET)) {
+        $_GET['status'] = PONOS_STATUS_DONE;
+    }
+    $action = 'update_status';
+}
+
 $userEmail = ponos_current_user_email();
 $isAdmin = ponos_current_user_is_admin();
+
+if ($action === 'whoami') {
+    ponos_api_json([
+        'ok' => true,
+        'user_email' => $userEmail,
+        'is_admin' => $isAdmin,
+        'auth' => $authViaApiKey ? 'api_key' : 'session',
+    ]);
+}
+
+if ($action === 'create_api_key') {
+    $created = ponos_api_key_create($userEmail, trim((string) ($_POST['label'] ?? $_GET['label'] ?? '')));
+    if ($created === null) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
+    }
+
+    ponos_api_json([
+        'ok' => true,
+        'api_key' => $created['api_key'],
+        'key' => [
+            'id' => $created['id'],
+            'user_email' => $created['user_email'],
+            'label' => $created['label'],
+            'key_prefix' => $created['key_prefix'],
+            'created_at' => $created['created_at'],
+        ],
+    ], 201);
+}
+
+if ($action === 'list_api_keys') {
+    ponos_api_json(['ok' => true, 'keys' => ponos_api_key_list($userEmail)]);
+}
+
+if ($action === 'revoke_api_key') {
+    $keyId = (int) ($_POST['id'] ?? $_POST['key_id'] ?? $_GET['id'] ?? $_GET['key_id'] ?? 0);
+    if (!ponos_api_key_revoke($keyId, $userEmail)) {
+        ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.api_key_not_found')], 404);
+    }
+
+    ponos_api_json(['ok' => true]);
+}
 
 if ($action === 'set_dev_admin') {
     if (!ponos_user_has_admin_role()) {

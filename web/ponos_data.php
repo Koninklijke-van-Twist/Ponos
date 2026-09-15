@@ -23,8 +23,32 @@ const PONOS_STATUS_DONE = 'done';
  * Functies
  */
 
+function ponos_set_request_user(string $email): void
+{
+    $email = strtolower(trim($email));
+    if ($email === '') {
+        unset($GLOBALS['ponos_request_user_email']);
+
+        return;
+    }
+
+    $GLOBALS['ponos_request_user_email'] = $email;
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        if (!is_array($_SESSION['user'] ?? null)) {
+            $_SESSION['user'] = [];
+        }
+        $_SESSION['user']['email'] = $email;
+    }
+}
+
 function ponos_current_user_email(): string
 {
+    $override = strtolower(trim((string) ($GLOBALS['ponos_request_user_email'] ?? '')));
+    if ($override !== '') {
+        return $override;
+    }
+
     $email = strtolower(trim((string) ($_SESSION['user']['email'] ?? '')));
 
     return $email !== '' ? $email : PONOS_DEFAULT_USER_EMAIL;
