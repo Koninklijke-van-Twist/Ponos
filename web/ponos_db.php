@@ -15,6 +15,11 @@ function ponos_db_path(): string
         return (string) PONOS_TEST_DB_PATH;
     }
 
+    $fromEnv = getenv('PONOS_DB_PATH');
+    if (is_string($fromEnv) && $fromEnv !== '') {
+        return $fromEnv;
+    }
+
     return ponos_data_dir() . DIRECTORY_SEPARATOR . 'ponos.sqlite';
 }
 
@@ -183,6 +188,21 @@ function ponos_db_migrate_schema(PDO $pdo): void
         )'
     );
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_email_queue_created ON email_queue(created_at)');
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT NOT NULL,
+            label TEXT NOT NULL DEFAULT "",
+            key_prefix TEXT NOT NULL,
+            key_hash TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            last_used_at TEXT NULL,
+            revoked_at TEXT NULL
+        )'
+    );
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_api_keys_email ON api_keys(user_email)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)');
 
     if (ponos_db_meta_get($pdo, 'open_access_migrated') !== '1') {
         $pdo->exec('UPDATE groups SET open_access = 1');
@@ -568,6 +588,7 @@ function ponos_db_wipe_all(): void
 {
     $pdo = ponos_db();
     $pdo->exec('DELETE FROM email_queue');
+    $pdo->exec('DELETE FROM api_keys');
     $pdo->exec('DELETE FROM task_user_seen');
     $pdo->exec('DELETE FROM attachments');
     $pdo->exec('DELETE FROM task_message_reads');
