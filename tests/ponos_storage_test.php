@@ -87,6 +87,33 @@ ponos_test('ponos_add_task_message stores user message', function (): void {
     $message = ponos_add_task_message($groupId, $created['id'], 'reviewer@kvt.nl', 'Hallo team');
     assert_true(is_array($message));
     assert_eq('reviewer@kvt.nl', $message['email']);
+    assert_eq('', $message['actor_name'] ?? '');
+});
+
+ponos_test('ponos_add_task_message stores request actor_name as display-only', function (): void {
+    ponos_db_wipe_all();
+    $groupId = 'test-group-actor';
+    ponos_db()->prepare(
+        'INSERT INTO groups(id, name, created_at, sort_order, can_create_tasks) VALUES(?, ?, ?, 0, 1)'
+    )->execute([$groupId, 'Test Group', gmdate('c')]);
+
+    $created = ponos_create_task($groupId, 'owner@kvt.nl', [
+        'title' => 'Actor taak',
+        'description' => 'Omschrijving',
+    ]);
+
+    ponos_set_request_actor_name('Iris');
+    $message = ponos_add_task_message($groupId, $created['id'], 'owner@kvt.nl', 'Bot note');
+    ponos_set_request_actor_name('');
+
+    assert_true(is_array($message));
+    assert_eq('owner@kvt.nl', $message['email']);
+    assert_eq('Iris', $message['actor_name']);
+
+    $full = ponos_get_task($groupId, $created['id']);
+    $last = $full['messages'][count($full['messages']) - 1];
+    assert_eq('Iris', $last['actor_name']);
+    assert_eq('owner@kvt.nl', $last['email']);
 });
 
 ponos_test('ponos_update_task writes audit system message', function (): void {

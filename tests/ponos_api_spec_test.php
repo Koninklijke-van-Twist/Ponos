@@ -34,6 +34,14 @@ ponos_test('ponos_api_help documents task CRUD and durable API-key auth', functi
     assert_eq(true, $spec['actions']['list_tasks']['auth_required']);
     assert_true(str_contains((string) $spec['task_model']['description'], 'notes') || $spec['task_model']['description'] === 'string notes/body');
     assert_true(str_contains((string) $spec['task_model']['no_priority_field'], 'priority'));
+    assert_true(str_contains((string) ($spec['auth']['actor_name'] ?? ''), 'display-only')
+        || str_contains((string) ($spec['auth']['actor_name'] ?? ''), 'Display-only')
+        || str_contains((string) ($spec['auth']['identity'] ?? ''), 'display-only'));
+
+    $addMessageFields = array_column($spec['actions']['add_message']['fields'], 'name');
+    assert_true(in_array('actor_name', $addMessageFields, true));
+    $createKeyFields = array_column($spec['actions']['create_api_key']['fields'], 'name');
+    assert_true(in_array('actor_name', $createKeyFields, true));
 });
 
 ponos_test('ponos_api.php help is public and does not load auth.php', function (): void {

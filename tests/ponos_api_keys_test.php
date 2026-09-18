@@ -129,6 +129,27 @@ ponos_test('API-key identity can create and list Ponos tasks', function (): void
     ponos_set_request_user('');
 });
 
+ponos_test('API key stores optional actor_name default and request overrides it', function (): void {
+    ponos_db_wipe_all();
+    $created = ponos_api_key_create('owner@kvt.nl', 'integration', 'Iris');
+    assert_eq('Iris', $created['actor_name']);
+
+    $authed = ponos_api_key_authenticate((string) $created['api_key']);
+    assert_eq('Iris', $authed['actor_name']);
+
+    $_POST = [];
+    $_GET = [];
+    assert_eq('Iris', ponos_resolve_request_actor_name((string) $authed['actor_name']));
+
+    $_POST['actor_name'] = '  Custom Bot  ';
+    assert_eq('Custom Bot', ponos_resolve_request_actor_name((string) $authed['actor_name']));
+    $_POST = [];
+
+    $plain = ponos_api_key_create('owner@kvt.nl', 'plain');
+    assert_eq('', $plain['actor_name']);
+    assert_eq('', ponos_resolve_request_actor_name((string) $plain['actor_name']));
+});
+
 ponos_test('ponos_api_key CLI mints a hashed key in an isolated db', function (): void {
     $dbPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ponos_cli_keys_' . getmypid() . '.sqlite';
     @unlink($dbPath);

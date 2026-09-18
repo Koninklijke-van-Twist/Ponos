@@ -341,6 +341,7 @@ function ponos_normalize_message_row(array $row, array $task): array
         'text' => (string) ($row['text'] ?? ''),
         'kind' => (string) ($row['kind'] ?? 'user'),
         'created_at' => (string) ($row['created_at'] ?? ''),
+        'actor_name' => ponos_normalize_actor_name((string) ($row['actor_name'] ?? '')),
         'colors' => ponos_color_from_text($email),
         'avatar_url' => ponos_user_avatar_url($email),
         'attachments' => ponos_task_attachments($task, $messageId),
@@ -797,9 +798,10 @@ function ponos_add_task_message(
     }
 
     $createdAt = gmdate('c');
+    $actorName = ponos_current_actor_name();
     $pdo = ponos_db();
-    $pdo->prepare('INSERT INTO messages(task_id, email, text, kind, created_at) VALUES(?, ?, ?, ?, ?)')
-        ->execute([$taskId, $email, $text, 'user', $createdAt]);
+    $pdo->prepare('INSERT INTO messages(task_id, email, text, kind, created_at, actor_name) VALUES(?, ?, ?, ?, ?, ?)')
+        ->execute([$taskId, $email, $text, 'user', $createdAt, $actorName]);
     $messageId = (int) $pdo->lastInsertId();
 
     $message = [
@@ -808,6 +810,7 @@ function ponos_add_task_message(
         'text' => $text,
         'kind' => 'user',
         'created_at' => $createdAt,
+        'actor_name' => $actorName,
     ];
 
     $task = ponos_db_fetch_task_array($taskId, true);

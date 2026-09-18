@@ -36,7 +36,7 @@ Bots gebruiken een **vaste API-key**, niet de roterende dagelijkse login-key van
 - Of: `Authorization: Bearer ponos_…`
 - Of JSON/form body field `api_key` (niet in de querystring)
 
-De key hoort bij een gebruikers-e-mail. Groepstoegang en "Mijn Taken" volgen die gebruiker. De web-UI blijft via de Office365-sessie werken (`logincheck.php` wordt overgeslagen als een geldige API-key aanwezig is).
+De key hoort bij een gebruikers-e-mail. Groepstoegang en "Mijn Taken" volgen die gebruiker. Optioneel veld `actor_name` (op de request, of als default op de key) is alleen een weergavenaam op berichten/activiteit; rechten blijven bij de key-eigenaar. Zonder veld blijft de naam van de eigenaar. Hover toont “Integratie van &lt;eigenaar&gt;”. De web-UI blijft via de Office365-sessie werken (`logincheck.php` wordt overgeslagen als een geldige API-key aanwezig is).
 
 Keys worden als SHA-256-hash in `web/data/ponos/ponos.sqlite` opgeslagen. De plaintext wordt één keer getoond.
 

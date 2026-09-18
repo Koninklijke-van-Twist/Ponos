@@ -173,6 +173,7 @@ if ($presentedApiKey !== '') {
     }
 
     ponos_api_apply_authenticated_user((string) $apiKeyRecord['user_email']);
+    ponos_set_request_actor_name(ponos_resolve_request_actor_name((string) ($apiKeyRecord['actor_name'] ?? '')));
     $authViaApiKey = true;
 } else {
     require_once __DIR__ . '/logincheck.php';
@@ -196,11 +197,16 @@ if ($action === 'whoami') {
         'user_email' => $userEmail,
         'is_admin' => $isAdmin,
         'auth' => $authViaApiKey ? 'api_key' : 'session',
+        'actor_name' => $authViaApiKey ? ponos_current_actor_name() : '',
     ]);
 }
 
 if ($action === 'create_api_key') {
-    $created = ponos_api_key_create($userEmail, trim((string) ($_POST['label'] ?? $_GET['label'] ?? '')));
+    $created = ponos_api_key_create(
+        $userEmail,
+        trim((string) ($_POST['label'] ?? $_GET['label'] ?? '')),
+        trim((string) ($_POST['actor_name'] ?? $_GET['actor_name'] ?? ''))
+    );
     if ($created === null) {
         ponos_api_json(['ok' => false, 'error' => LOC('ponos.error.save_failed')], 400);
     }
@@ -212,6 +218,7 @@ if ($action === 'create_api_key') {
             'id' => $created['id'],
             'user_email' => $created['user_email'],
             'label' => $created['label'],
+            'actor_name' => $created['actor_name'],
             'key_prefix' => $created['key_prefix'],
             'created_at' => $created['created_at'],
         ],

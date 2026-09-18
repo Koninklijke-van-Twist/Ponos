@@ -37,7 +37,9 @@ $i18nKeys = [
     'ponos.settings.status_changed', 'ponos.settings.message', 'ponos.settings.checklist',
     'ponos.settings.daily_reminder', 'ponos.settings.hint',
     'ponos.settings.api_keys.title', 'ponos.settings.api_keys.hint', 'ponos.settings.api_keys.label',
-    'ponos.settings.api_keys.label_placeholder', 'ponos.settings.api_keys.create',
+    'ponos.settings.api_keys.label_placeholder', 'ponos.settings.api_keys.actor_name',
+    'ponos.settings.api_keys.actor_name_placeholder', 'ponos.settings.api_keys.shows_as',
+    'ponos.settings.api_keys.create', 'ponos.message.integration_of',
     'ponos.settings.api_keys.empty', 'ponos.settings.api_keys.id', 'ponos.settings.api_keys.created',
     'ponos.settings.api_keys.revoke', 'ponos.settings.api_keys.revoke_confirm',
     'ponos.settings.api_keys.reveal_title', 'ponos.settings.api_keys.reveal_hint',
@@ -526,6 +528,7 @@ foreach ($i18nKeys as $key) {
         .ponos-message-email {
             display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 700;
         }
+        .ponos-message-email[title] { cursor: help; }
         .ponos-stats-user-label { display: inline-flex; align-items: center; gap: 8px; }
         .ponos-access-member-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
         .ponos-message--system .ponos-message-system-text { font-style: italic; }
@@ -863,6 +866,8 @@ foreach ($i18nKeys as $key) {
                     <input type="text" id="ponos-api-key-label" maxlength="80" autocomplete="off" placeholder="<?= ponos_h(LOC('ponos.settings.api_keys.label_placeholder')) ?>">
                     <button type="submit" id="ponos-api-key-create" class="ponos-btn"><?= ponos_h(LOC('ponos.settings.api_keys.create')) ?></button>
                 </div>
+                <label for="ponos-api-key-actor-name"><?= ponos_h(LOC('ponos.settings.api_keys.actor_name')) ?></label>
+                <input type="text" id="ponos-api-key-actor-name" maxlength="80" autocomplete="off" placeholder="<?= ponos_h(LOC('ponos.settings.api_keys.actor_name_placeholder')) ?>">
             </form>
             <p id="ponos-api-key-error" class="ponos-alert ponos-api-key-error" hidden role="alert"></p>
             <div id="ponos-api-key-reveal" class="ponos-api-key-reveal" hidden>

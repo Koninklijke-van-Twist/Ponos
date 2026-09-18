@@ -4,6 +4,18 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/web/ponos_data.php';
 
+ponos_test('ponos_normalize_actor_name trims and caps length', function (): void {
+    assert_eq('', ponos_normalize_actor_name('   '));
+    assert_eq('Iris', ponos_normalize_actor_name('  Iris  '));
+    assert_eq('Custom Bot', ponos_normalize_actor_name("Custom   Bot"));
+    $long = str_repeat('a', PONOS_ACTOR_NAME_MAX_LENGTH + 10);
+    assert_eq(PONOS_ACTOR_NAME_MAX_LENGTH, mb_strlen(ponos_normalize_actor_name($long)));
+    ponos_set_request_actor_name('  Iris  ');
+    assert_eq('Iris', ponos_current_actor_name());
+    ponos_set_request_actor_name('');
+    assert_eq('', ponos_current_actor_name());
+});
+
 ponos_test('ponos_hash_text_for_color is deterministic', function (): void {
     assert_eq(ponos_hash_text_for_color('test@example.com'), ponos_hash_text_for_color('test@example.com'));
     assert_true(ponos_hash_text_for_color('a') !== ponos_hash_text_for_color('b'));

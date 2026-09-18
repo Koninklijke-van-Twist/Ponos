@@ -11,6 +11,9 @@ const PONOS_API_KEY_UI_I18N_KEYS = [
     'ponos.settings.api_keys.hint',
     'ponos.settings.api_keys.label',
     'ponos.settings.api_keys.label_placeholder',
+    'ponos.settings.api_keys.actor_name',
+    'ponos.settings.api_keys.actor_name_placeholder',
+    'ponos.settings.api_keys.shows_as',
     'ponos.settings.api_keys.create',
     'ponos.settings.api_keys.empty',
     'ponos.settings.api_keys.id',
@@ -32,6 +35,17 @@ ponos_test('API-key settings i18n exists in all locales', function (): void {
             assert_true(trim((string) TRANSLATIONS[$lang][$key]) !== '', $lang . ' empty ' . $key);
         }
     }
+});
+
+ponos_test('integration tooltip string exists in all locales and stays generic', function (): void {
+    foreach (array_keys(SUPPORTED_LANGUAGES) as $lang) {
+        assert_true(isset(TRANSLATIONS[$lang]['ponos.message.integration_of']), $lang . ' missing integration tooltip');
+        $text = (string) TRANSLATIONS[$lang]['ponos.message.integration_of'];
+        assert_true(str_contains($text, '%s'), $lang . ' tooltip missing owner placeholder');
+        assert_false(stripos($text, 'sec-bot') !== false, $lang . ' tooltip names Sec-Bot');
+        assert_false(stripos($text, 'iris') !== false, $lang . ' tooltip names Iris');
+    }
+    assert_eq('Integratie van %s', TRANSLATIONS['nl']['ponos.message.integration_of']);
 });
 
 ponos_test('API-key settings copy stays generic and never names a specific bot', function (): void {
@@ -60,6 +74,7 @@ ponos_test('settings modal HTML exposes create/list/revoke UI without a stored p
     assert_true(str_contains($html, 'id="ponos-api-key-form"'));
     assert_true(str_contains($html, 'id="ponos-api-key-create"'));
     assert_true(str_contains($html, 'id="ponos-api-key-label"'));
+    assert_true(str_contains($html, 'id="ponos-api-key-actor-name"'));
     assert_true(str_contains($html, 'id="ponos-api-key-error"'));
     assert_true(str_contains($html, 'id="ponos-api-key-reveal"'));
     assert_true(str_contains($html, 'id="ponos-api-key-plaintext"'));
@@ -80,6 +95,9 @@ ponos_test('settings JS mints and revokes via POST body and surfaces errors in t
     assert_false(str_contains($js, "apiUrl('create_api_key',"));
     assert_true(str_contains($js, "body.set('action', 'create_api_key')"));
     assert_true(str_contains($js, "body.set('label', label)"));
+    assert_true(str_contains($js, "body.set('actor_name', actorName)"));
+    assert_true(str_contains($js, "formatI18n('ponos.message.integration_of', ownerName)"));
+    assert_true(str_contains($js, 'message.actor_name'));
     assert_true(str_contains($js, "fetch(apiFetchUrl('list_api_keys')"));
     assert_true(str_contains($js, "fetch(apiUrl('revoke_api_key')"));
     assert_false(str_contains($js, "apiUrl('revoke_api_key',"));

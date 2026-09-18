@@ -68,6 +68,7 @@
         apiKeyForm: document.getElementById('ponos-api-key-form'),
         apiKeyList: document.getElementById('ponos-api-key-list'),
         apiKeyLabel: document.getElementById('ponos-api-key-label'),
+        apiKeyActorName: document.getElementById('ponos-api-key-actor-name'),
         apiKeyCreate: document.getElementById('ponos-api-key-create'),
         apiKeyError: document.getElementById('ponos-api-key-error'),
         apiKeyReveal: document.getElementById('ponos-api-key-reveal'),
@@ -2229,12 +2230,17 @@
         const emailColors = message.colors || colorFromText(message.email || '');
         const isSystem = message.kind === 'system';
         const email = String(message.email || '').trim();
-        const authorName = userNameByEmail(email) || email;
+        const customName = String(message.actor_name || '').trim();
+        const ownerName = userNameByEmail(email) || email;
+        const authorName = customName !== '' ? customName : ownerName;
+        const integrationTitle = customName !== ''
+            ? ' title="' + escapeAttr(formatI18n('ponos.message.integration_of', ownerName)) + '"'
+            : '';
         let html = '';
         html += '<div class="ponos-message-row">';
         html += '<div class="ponos-message-avatar-wrap">' + renderUserAvatarHtml(email, { message: message }) + '</div>';
         html += '<article class="ponos-message' + (isSystem ? ' ponos-message--system' : '') + '" style="border-color:' + escapeHtml(emailColors.border) + ';background:' + escapeHtml(emailColors.cardBackground) + '">';
-        html += '<div class="ponos-message-meta"><span class="ponos-message-email" style="background:' + escapeHtml(emailColors.chipBackground) + ';color:' + escapeHtml(emailColors.chipTextColor) + '">' + escapeHtml(authorName) + '</span><span>' + escapeHtml(formatTimestamp(message.created_at)) + '</span></div>';
+        html += '<div class="ponos-message-meta"><span class="ponos-message-email"' + integrationTitle + ' style="background:' + escapeHtml(emailColors.chipBackground) + ';color:' + escapeHtml(emailColors.chipTextColor) + '">' + escapeHtml(authorName) + '</span><span>' + escapeHtml(formatTimestamp(message.created_at)) + '</span></div>';
         html += '<div' + (isSystem ? ' class="ponos-message-system-text"' : '') + '>' + formatDescriptionHtml(message.text || '') + '</div>';
         if ((message.attachments || []).length > 0) {
             html += '<div class="ponos-attachments">';
@@ -2766,6 +2772,13 @@
                 + ' · '
                 + formatI18n('ponos.settings.api_keys.created', formatTimestamp(key.created_at));
             info.appendChild(label);
+            const actorName = String(key.actor_name || '').trim();
+            if (actorName !== '') {
+                const shownAs = document.createElement('div');
+                shownAs.className = 'ponos-muted ponos-api-key-item-meta';
+                shownAs.textContent = formatI18n('ponos.settings.api_keys.shows_as', actorName);
+                info.appendChild(shownAs);
+            }
             info.appendChild(meta);
             const revokeBtn = document.createElement('button');
             revokeBtn.type = 'button';
@@ -2813,10 +2826,14 @@
         creatingApiKey = true;
         clearApiKeyError();
         const label = el.apiKeyLabel ? el.apiKeyLabel.value.trim() : '';
+        const actorName = el.apiKeyActorName ? el.apiKeyActorName.value.trim() : '';
         const body = new URLSearchParams();
         body.set('action', 'create_api_key');
         if (label !== '') {
             body.set('label', label);
+        }
+        if (actorName !== '') {
+            body.set('actor_name', actorName);
         }
         if (el.apiKeyCreate) {
             el.apiKeyCreate.disabled = true;
@@ -2843,6 +2860,9 @@
             }
             if (el.apiKeyLabel) {
                 el.apiKeyLabel.value = '';
+            }
+            if (el.apiKeyActorName) {
+                el.apiKeyActorName.value = '';
             }
             showApiKeyReveal(plaintext);
             await loadApiKeys();

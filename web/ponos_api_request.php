@@ -90,3 +90,8 @@ function ponos_api_request_api_key(): string
 
     return trim((string) ($_POST['api_key'] ?? ''));
 }
+
+function ponos_api_request_actor_name(): string
+{
+    return trim((string) ($_POST['actor_name'] ?? $_GET['actor_name'] ?? ''));
+}

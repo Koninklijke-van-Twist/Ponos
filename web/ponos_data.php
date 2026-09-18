@@ -19,9 +19,56 @@ const PONOS_STATUS_IN_PROGRESS = 'in_progress';
 
 const PONOS_STATUS_DONE = 'done';
 
+const PONOS_ACTOR_NAME_MAX_LENGTH = 80;
+
 /**
  * Functies
  */
+
+function ponos_normalize_actor_name(string $name): string
+{
+    $name = trim((string) preg_replace('/\s+/u', ' ', $name));
+    if ($name === '') {
+        return '';
+    }
+
+    if (mb_strlen($name) > PONOS_ACTOR_NAME_MAX_LENGTH) {
+        return mb_substr($name, 0, PONOS_ACTOR_NAME_MAX_LENGTH);
+    }
+
+    return $name;
+}
+
+function ponos_set_request_actor_name(string $name): void
+{
+    $name = ponos_normalize_actor_name($name);
+    if ($name === '') {
+        unset($GLOBALS['ponos_request_actor_name']);
+
+        return;
+    }
+
+    $GLOBALS['ponos_request_actor_name'] = $name;
+}
+
+function ponos_current_actor_name(): string
+{
+    return ponos_normalize_actor_name((string) ($GLOBALS['ponos_request_actor_name'] ?? ''));
+}
+
+function ponos_resolve_request_actor_name(string $keyDefault = ''): string
+{
+    $fromRequest = ponos_normalize_actor_name(
+        function_exists('ponos_api_request_actor_name')
+            ? ponos_api_request_actor_name()
+            : (string) ($_POST['actor_name'] ?? $_GET['actor_name'] ?? '')
+    );
+    if ($fromRequest !== '') {
+        return $fromRequest;
+    }
+
+    return ponos_normalize_actor_name($keyDefault);
+}
 
 function ponos_set_request_user(string $email): void
 {

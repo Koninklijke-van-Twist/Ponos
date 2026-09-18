@@ -63,6 +63,7 @@ function ponos_api_key_public_row(array $row): array
         'id' => (int) ($row['id'] ?? 0),
         'user_email' => ponos_api_key_normalize_email((string) ($row['user_email'] ?? '')),
         'label' => (string) ($row['label'] ?? ''),
+        'actor_name' => ponos_normalize_actor_name((string) ($row['actor_name'] ?? '')),
         'key_prefix' => (string) ($row['key_prefix'] ?? ''),
         'created_at' => (string) ($row['created_at'] ?? ''),
         'last_used_at' => (string) ($row['last_used_at'] ?? ''),
@@ -71,7 +72,7 @@ function ponos_api_key_public_row(array $row): array
     ];
 }
 
-function ponos_api_key_create(string $email, string $label = ''): ?array
+function ponos_api_key_create(string $email, string $label = '', string $actorName = ''): ?array
 {
     $email = ponos_api_key_normalize_email($email);
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -80,13 +81,15 @@ function ponos_api_key_create(string $email, string $label = ''): ?array
 
     $plaintext = ponos_api_key_generate_plaintext();
     $now = gmdate('c');
+    $actorName = ponos_normalize_actor_name($actorName);
     $pdo = ponos_db();
     $pdo->prepare(
-        'INSERT INTO api_keys(user_email, label, key_prefix, key_hash, created_at)
-         VALUES(?, ?, ?, ?, ?)'
+        'INSERT INTO api_keys(user_email, label, actor_name, key_prefix, key_hash, created_at)
+         VALUES(?, ?, ?, ?, ?, ?)'
     )->execute([
         $email,
         ponos_api_key_normalize_label($label),
+        $actorName,
         ponos_api_key_prefix($plaintext),
         ponos_api_key_hash($plaintext),
         $now,
@@ -98,6 +101,7 @@ function ponos_api_key_create(string $email, string $label = ''): ?array
         'id' => $id,
         'user_email' => $email,
         'label' => ponos_api_key_normalize_label($label),
+        'actor_name' => $actorName,
         'key_prefix' => ponos_api_key_prefix($plaintext),
         'api_key' => $plaintext,
         'created_at' => $now,
@@ -112,7 +116,7 @@ function ponos_api_key_authenticate(string $plaintext): ?array
     }
 
     $stmt = ponos_db()->prepare(
-        'SELECT id, user_email, label, key_prefix, created_at, last_used_at, revoked_at
+        'SELECT id, user_email, label, actor_name, key_prefix, created_at, last_used_at, revoked_at
          FROM api_keys
          WHERE key_hash = ? AND (revoked_at IS NULL OR TRIM(revoked_at) = "")
          LIMIT 1'
@@ -138,7 +142,7 @@ function ponos_api_key_list(string $email, bool $includeRevoked = false): array
         return [];
     }
 
-    $sql = 'SELECT id, user_email, label, key_prefix, created_at, last_used_at, revoked_at
+    $sql = 'SELECT id, user_email, label, actor_name, key_prefix, created_at, last_used_at, revoked_at
             FROM api_keys
             WHERE LOWER(user_email) = ?';
     if (!$includeRevoked) {

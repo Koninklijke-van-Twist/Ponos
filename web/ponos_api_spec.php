@@ -57,6 +57,7 @@ function ponos_api_help(): array
         ponos_spec_field('category_id', 'string', false, 'Group category id. Closest thing to priority/tags; Ponos has no priority field.'),
         ponos_spec_field('checklist', 'array|json-string', false, 'Subtasks: JSON array of strings, or JSON string of that array'),
         ponos_spec_field('status', 'string', false, 'todo | in_progress | done. Create defaults to todo. Use update_status / complete_task to change.'),
+        ponos_spec_field('actor_name', 'string', false, 'Optional visible actor on the created-task system message. Display-only. Empty uses the key default or the API-key owner name.'),
     ];
 
     return [
@@ -94,7 +95,8 @@ function ponos_api_help(): array
             'bearer' => 'Authorization: Bearer <key>',
             'durable_keys' => 'Fixed Ponos API keys (prefix ponos_). Hashed at rest (sha256). Suitable for a Grok bot keystore. Not the rotating daily login analytics key.',
             'session' => 'Browser Office365 session cookie still works for the web UI. Bots should use X-API-Key and skip cookies.',
-            'identity' => 'A key acts as the user_email it was minted for. Group access and assignee filters follow that user.',
+            'identity' => 'A key acts as the user_email it was minted for. Group access and assignee filters follow that user. Optional actor_name is display-only and does not change identity or privileges.',
+            'actor_name' => 'Optional visible name on task messages/activity. Request field actor_name overrides the key default. Empty or omitted uses the API-key owner name. Hover in the UI shows an integration tooltip with the owner display name.',
             'mint' => [
                 'ui' => 'Ponos settings panel (gear icon): create, list, and revoke keys while logged in. Primary path for humans. Plaintext is shown once in the UI.',
                 'cli' => 'php web/ponos_api_key.php create EMAIL [label]',
@@ -172,9 +174,9 @@ function ponos_api_help(): array
                 'api_key_or_session',
                 true,
                 [ponos_spec_field('action', 'string', true, 'whoami')],
-                ['ok' => true, 'user_email' => 'string', 'is_admin' => 'bool', 'auth' => 'api_key|session'],
+                ['ok' => true, 'user_email' => 'string', 'is_admin' => 'bool', 'auth' => 'api_key|session', 'actor_name' => 'string, set only for api_key auth'],
                 [$authError],
-                'Identity of the current API key or session user.'
+                'Identity of the current API key or session user. actor_name is the resolved display name for this request (empty when using the owner name or a browser session).'
             ),
             'navigation' => ponos_spec_action(
                 ['GET', 'POST'],
@@ -240,6 +242,7 @@ function ponos_api_help(): array
                     ponos_spec_field('category_id', 'string', false, 'New category id'),
                     ponos_spec_field('checklist', 'array|json-string', false, 'Replace checklist labels'),
                     ponos_spec_field('target_group', 'string', false, 'Optional move to another group'),
+                    ponos_spec_field('actor_name', 'string', false, 'Optional visible actor on the update system message. Display-only. Empty uses the key default or the API-key owner name.'),
                 ],
                 ['ok' => true, 'task' => 'updated task'],
                 [$authError, $missingParam, $forbidden, $notFound],
@@ -254,6 +257,7 @@ function ponos_api_help(): array
                     ponos_spec_field('group', 'string', true, 'Group id or __my_tasks__'),
                     ponos_spec_field('task', 'string', true, 'Task id'),
                     ponos_spec_field('status', 'string', true, 'todo | in_progress | done'),
+                    ponos_spec_field('actor_name', 'string', false, 'Optional visible actor on the status-change system message. Display-only.'),
                 ],
                 ['ok' => true, 'task' => 'task with new status'],
                 [$authError, $missingParam, $forbidden, $notFound],
@@ -267,6 +271,7 @@ function ponos_api_help(): array
                     ponos_spec_field('action', 'string', true, 'complete_task'),
                     ponos_spec_field('group', 'string', true, 'Group id or __my_tasks__'),
                     ponos_spec_field('task', 'string', true, 'Task id'),
+                    ponos_spec_field('actor_name', 'string', false, 'Optional visible actor on the completion system message. Display-only.'),
                 ],
                 ['ok' => true, 'task' => 'task with status=done'],
                 [$authError, $missingParam, $forbidden, $notFound],
@@ -281,6 +286,7 @@ function ponos_api_help(): array
                     ponos_spec_field('group', 'string', true, 'Current group'),
                     ponos_spec_field('task', 'string', true, 'Task id'),
                     ponos_spec_field('target_group', 'string', true, 'Destination group id'),
+                    ponos_spec_field('actor_name', 'string', false, 'Optional visible actor on the move system message. Display-only.'),
                 ],
                 ['ok' => true, 'task' => 'moved task'],
                 [$authError, $missingParam, $forbidden, $notFound],
@@ -307,6 +313,7 @@ function ponos_api_help(): array
                     ponos_spec_field('action', 'string', true, 'unarchive_task'),
                     ponos_spec_field('group', 'string', true, 'Group id or __my_tasks__'),
                     ponos_spec_field('task', 'string', true, 'Task id'),
+                    ponos_spec_field('actor_name', 'string', false, 'Optional visible actor on the unarchive system message. Display-only.'),
                 ],
                 ['ok' => true, 'task' => 'restored task'],
                 [$authError, $missingParam, $forbidden, $notFound],
@@ -322,6 +329,7 @@ function ponos_api_help(): array
                     ponos_spec_field('task', 'string', true, 'Task id'),
                     ponos_spec_field('item_id', 'integer', true, 'Checklist item id'),
                     ponos_spec_field('done', 'bool', false, 'Default true'),
+                    ponos_spec_field('actor_name', 'string', false, 'Optional visible actor if this action creates activity. Display-only.'),
                 ],
                 ['ok' => true, 'task' => 'updated task'],
                 [$authError, $missingParam, $forbidden, $notFound],
@@ -336,6 +344,7 @@ function ponos_api_help(): array
                     ponos_spec_field('group', 'string', true, 'Group id or __my_tasks__'),
                     ponos_spec_field('task', 'string', true, 'Task id'),
                     ponos_spec_field('text', 'string', true, 'Message body (threaded notes)'),
+                    ponos_spec_field('actor_name', 'string', false, 'Optional visible sender name. Display-only; email/privileges stay with the API-key owner. Empty uses the key default or the owner name. Hover shows an integration tooltip with the owner.'),
                 ],
                 ['ok' => true, 'message' => 'stored message'],
                 [$authError, $missingParam, $forbidden, $notFound],
@@ -359,7 +368,8 @@ function ponos_api_help(): array
                 true,
                 [
                     ponos_spec_field('action', 'string', true, 'create_api_key'),
-                    ponos_spec_field('label', 'string', false, 'Key label, default bot. Example: Sec-Bot'),
+                    ponos_spec_field('label', 'string', false, 'Key label, default bot. Used to identify the key in settings, not as the visible message name.'),
+                    ponos_spec_field('actor_name', 'string', false, 'Optional default visible actor name for this key. Per-request actor_name overrides it. Empty = owner name.'),
                 ],
                 ['ok' => true, 'api_key' => 'plaintext shown once', 'key' => 'public metadata without secret'],
                 [$authError],
@@ -370,7 +380,7 @@ function ponos_api_help(): array
                 'api_key_or_session',
                 true,
                 [ponos_spec_field('action', 'string', true, 'list_api_keys')],
-                ['ok' => true, 'keys' => 'array of {id,label,key_prefix,created_at,last_used_at} — no secrets'],
+                ['ok' => true, 'keys' => 'array of {id,label,actor_name,key_prefix,created_at,last_used_at} — no secrets'],
                 [$authError],
                 'List active keys for the current user. Only prefixes are shown.'
             ),

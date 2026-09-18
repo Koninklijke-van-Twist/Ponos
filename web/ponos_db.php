@@ -204,6 +204,9 @@ function ponos_db_migrate_schema(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_api_keys_email ON api_keys(user_email)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)');
 
+    ponos_db_ensure_column($pdo, 'messages', 'actor_name', 'TEXT NOT NULL DEFAULT ""');
+    ponos_db_ensure_column($pdo, 'api_keys', 'actor_name', 'TEXT NOT NULL DEFAULT ""');
+
     if (ponos_db_meta_get($pdo, 'open_access_migrated') !== '1') {
         $pdo->exec('UPDATE groups SET open_access = 1');
         ponos_db_meta_set($pdo, 'open_access_migrated', '1');
@@ -397,7 +400,7 @@ function ponos_db_import_task_array(PDO $pdo, string $groupId, array $task): voi
         $messageId = (int) ($message['id'] ?? 0);
         if ($messageId > 0) {
             $pdo->prepare(
-                'INSERT OR IGNORE INTO messages(id, task_id, email, text, kind, created_at) VALUES(?, ?, ?, ?, ?, ?)'
+                'INSERT OR IGNORE INTO messages(id, task_id, email, text, kind, created_at, actor_name) VALUES(?, ?, ?, ?, ?, ?, ?)'
             )->execute([
                 $messageId,
                 $taskId,
@@ -405,16 +408,18 @@ function ponos_db_import_task_array(PDO $pdo, string $groupId, array $task): voi
                 (string) ($message['text'] ?? ''),
                 (string) ($message['kind'] ?? 'user'),
                 (string) ($message['created_at'] ?? gmdate('c')),
+                ponos_normalize_actor_name((string) ($message['actor_name'] ?? '')),
             ]);
         } else {
             $pdo->prepare(
-                'INSERT INTO messages(task_id, email, text, kind, created_at) VALUES(?, ?, ?, ?, ?)'
+                'INSERT INTO messages(task_id, email, text, kind, created_at, actor_name) VALUES(?, ?, ?, ?, ?, ?)'
             )->execute([
                 $taskId,
                 strtolower(trim((string) ($message['email'] ?? ''))),
                 (string) ($message['text'] ?? ''),
                 (string) ($message['kind'] ?? 'user'),
                 (string) ($message['created_at'] ?? gmdate('c')),
+                ponos_normalize_actor_name((string) ($message['actor_name'] ?? '')),
             ]);
         }
     }
@@ -466,7 +471,7 @@ function ponos_db_fetch_checklist_for_task(string $taskId): array
 
 function ponos_db_fetch_messages_for_task(string $taskId): array
 {
-    $stmt = ponos_db()->prepare('SELECT id, email, text, kind, created_at FROM messages WHERE task_id = ? ORDER BY id');
+    $stmt = ponos_db()->prepare('SELECT id, email, text, kind, created_at, actor_name FROM messages WHERE task_id = ? ORDER BY id');
     $stmt->execute([$taskId]);
     $messages = [];
     foreach ($stmt->fetchAll() as $row) {
@@ -476,6 +481,7 @@ function ponos_db_fetch_messages_for_task(string $taskId): array
             'text' => (string) $row['text'],
             'kind' => (string) $row['kind'],
             'created_at' => (string) $row['created_at'],
+            'actor_name' => ponos_normalize_actor_name((string) ($row['actor_name'] ?? '')),
         ];
     }
 
@@ -548,7 +554,7 @@ function ponos_db_next_task_sort_order(string $groupId, string $status): int
     return ((int) $stmt->fetchColumn()) + 1;
 }
 
-function ponos_db_insert_system_message(string $taskId, string $text, string $actorEmail = ''): void
+function ponos_db_insert_system_message(string $taskId, string $text, string $actorEmail = '', string $actorName = ''): void
 {
     $text = trim($text);
     if ($text === '') {
@@ -564,14 +570,17 @@ function ponos_db_insert_system_message(string $taskId, string $text, string $ac
         $email = 'system@ponos.local';
     }
 
+    $actorName = ponos_normalize_actor_name($actorName !== '' ? $actorName : ponos_current_actor_name());
+
     ponos_db()->prepare(
-        'INSERT INTO messages(task_id, email, text, kind, created_at) VALUES(?, ?, ?, ?, ?)'
+        'INSERT INTO messages(task_id, email, text, kind, created_at, actor_name) VALUES(?, ?, ?, ?, ?, ?)'
     )->execute([
         $taskId,
         $email,
         $text,
         'system',
         gmdate('c'),
+        $actorName,
     ]);
 }
 
