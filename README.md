@@ -6,7 +6,19 @@ Taaksysteem gekoppeld aan Business Central-projecten.
 
 - Applicatie draait vanuit `web/`
 - Tests: `php tests/run.php`
-- Vereist `web/auth.php` (niet in git) en BC OData-toegang
+- Vereist `web/auth.php` (niet in git).
+- OData-reads gaan via Mímir als `$mimirApi` gezet is. Zonder die key blijft het bestaande Business Central-pad (`$baseUrl`, `$environment`, `$auth_list`, `$auth`).
+
+### Mímir in productie
+
+Alleen in `web/auth.php`, niet committen:
+
+```php
+$mimirApi  = 'mimir_…';
+$mimirBase = 'https://sleutels.kvt.nl/mimir/api'; // optioneel; dit is de default
+```
+
+`$mimirApi` is verplicht om Mímir te activeren. Daarna zijn `$auth_list`, `$environment`, `$baseUrl` en `$auth` niet nodig voor OData-reads, inclusief company-discovery.
 
 ## URL-structuur
 
