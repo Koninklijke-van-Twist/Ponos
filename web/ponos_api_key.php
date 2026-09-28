@@ -16,6 +16,11 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
+$ponosAuthFile = __DIR__ . '/auth.php';
+if (is_file($ponosAuthFile)) {
+    require_once $ponosAuthFile;
+}
+
 require_once __DIR__ . '/ponos_api_keys.php';
 
 $command = strtolower(trim((string) ($argv[1] ?? 'help')));

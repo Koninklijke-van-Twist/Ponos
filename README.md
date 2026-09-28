@@ -7,18 +7,25 @@ Taaksysteem gekoppeld aan Business Central-projecten.
 - Applicatie draait vanuit `web/`
 - Tests: `php tests/run.php`
 - Vereist `web/auth.php` (niet in git).
-- OData-reads gaan via Mímir als `$mimirApi` gezet is. Zonder die key blijft het bestaande Business Central-pad (`$baseUrl`, `$environment`, `$auth_list`, `$auth`).
+- OData-reads proberen Mímir als `$mimirApi` gezet is. Faalt die aanroep, dan valt Ponos terug op het bestaande Business Central-pad (`$baseUrl`, `$environment`, `$auth_list`, `$auth`) en de lokale odata-filecache. Zonder `$mimirApi` blijft alleen dat BC-pad actief.
 
 ### Mímir in productie
 
-Alleen in `web/auth.php`, niet committen:
+Alleen in `web/auth.php`, niet committen. De BC-credentials blijven naast `$mimirApi` staan; die zijn de automatische fallback als Mímir niet bereikbaar is (web, `nightly.php` en andere CLI-scripts zoals `ponos_data.php` en `ponos_api_key.php`):
 
 ```php
 $mimirApi  = 'mimir_…';
 $mimirBase = 'https://sleutels.kvt.nl/mimir/api'; // optioneel; dit is de default
+
+$auth_list = [
+    'Production' => ['mode' => 'basic', 'user' => 'USERNAME', 'pass' => 'PASSWORD'],
+];
+$environment = 'Production';
+$auth = $auth_list[$environment];
+$baseUrl = 'https://my-bc-domain.com:7148/';
 ```
 
-`$mimirApi` is verplicht om Mímir te activeren. Daarna zijn `$auth_list`, `$environment`, `$baseUrl` en `$auth` niet nodig voor OData-reads, inclusief company-discovery.
+`$mimirApi` is verplicht om Mímir te activeren. OData-reads en company-discovery gaan eerst naar Mímir. Bij een cURL-fout, timeout, non-2xx, ongeldige JSON of een Mímir-foutpayload haalt Ponos dezelfde gegevens direct bij Business Central op en slaat Mímir voor de rest van dat PHP-proces over. Ontbreken de BC-credentials, dan komt de oorspronkelijke Mímir-fout terug.
 
 ## URL-structuur
 

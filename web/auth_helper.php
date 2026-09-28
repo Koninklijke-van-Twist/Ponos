@@ -79,7 +79,9 @@ function auth_get_active_environments(): array
     }
 
     // Geen lokale BC-config: bij Mímir environments afleiden uit companies.php.
-    if (auth_mimir_enabled()) {
+    // Na een Mímir-fout niet opnieuw Mímir aanroepen (circuit) en geen BC-fetch
+    // starten vanuit de cache-key, anders loopt de fallback in zichzelf vast.
+    if (auth_mimir_enabled() && !(function_exists('odata_mimir_circuit_open') && odata_mimir_circuit_open())) {
         $cached = $GLOBALS['demeter_active_environments'] ?? null;
         if (is_array($cached) && $cached !== []) {
             return array_values(array_map('strval', $cached));
@@ -650,11 +652,25 @@ function auth_apply_curl_ssl_options($curlHandle, string $url = ''): void
  */
 function auth_odata_get_json(string $url, array $auth): array
 {
-    // Mímir-modus: geen directe BC-call; één pagina met de volledige Mímir-collectie.
-    if (auth_mimir_enabled() && function_exists('odata_mimir_fetch_all')) {
-        return ['value' => odata_mimir_fetch_all($url, 300)];
+    // Mímir eerst; bij een fout de pre-Mímir BC-call (met TLS-fallback).
+    if (auth_mimir_enabled() && function_exists('odata_mimir_or_direct') && function_exists('odata_mimir_fetch_all_impl')) {
+        return odata_mimir_or_direct(
+            static function () use ($url): array {
+                return ['value' => odata_mimir_fetch_all_impl($url, 300)];
+            },
+            static function () use ($url, $auth): array {
+                $directUrl = function_exists('odata_bc_url_from_odata_url') ? odata_bc_url_from_odata_url($url) : $url;
+                $directAuth = function_exists('odata_bc_auth_for_fallback') ? (odata_bc_auth_for_fallback($auth) ?? $auth) : $auth;
+                return auth_odata_get_json_direct($directUrl, $directAuth);
+            }
+        );
     }
 
+    return auth_odata_get_json_direct($url, $auth);
+}
+
+function auth_odata_get_json_direct(string $url, array $auth): array
+{
     $ch = curl_init($url);
     $userAgent = 'Demeter-ODataClient/1.0 (Windows; nl-NL)';
     curl_setopt_array($ch, [
@@ -702,9 +718,28 @@ function auth_odata_get_json(string $url, array $auth): array
  */
 function auth_odata_get_all(string $url, array $auth, int $ttlSeconds = 300): array
 {
-    // Mímir beheert de BC-cache; Ponos-filecache en directe BC-fetch worden overgeslagen.
-    if (auth_mimir_enabled() && function_exists('odata_get_all')) {
-        return odata_get_all($url, $auth, $ttlSeconds);
+    // Mímir eerst; bij een fout de pre-Mímir filecache + BC-fetch.
+    if (auth_mimir_enabled() && function_exists('odata_mimir_or_direct') && function_exists('odata_mimir_fetch_all_impl')) {
+        return odata_mimir_or_direct(
+            static function () use ($url, $ttlSeconds): array {
+                return odata_mimir_fetch_all_impl($url, $ttlSeconds === 0 ? 3600 : $ttlSeconds);
+            },
+            static function () use ($url, $auth, $ttlSeconds): array {
+                $directUrl = function_exists('odata_bc_url_from_odata_url') ? odata_bc_url_from_odata_url($url) : $url;
+                $directAuth = function_exists('odata_bc_auth_for_fallback') ? (odata_bc_auth_for_fallback($auth) ?? $auth) : $auth;
+                return auth_odata_get_all_direct($directUrl, $directAuth, $ttlSeconds);
+            }
+        );
+    }
+
+    return auth_odata_get_all_direct($url, $auth, $ttlSeconds);
+}
+
+function auth_odata_get_all_direct(string $url, array $auth, int $ttlSeconds = 300): array
+{
+    $ttlSeconds = max(1, $ttlSeconds);
+    if (isset($GLOBALS['PONOS_ODATA_BC_FETCH']) && is_callable($GLOBALS['PONOS_ODATA_BC_FETCH'])) {
+        return $GLOBALS['PONOS_ODATA_BC_FETCH']($url, $auth, $ttlSeconds);
     }
 
     if (
@@ -747,7 +782,7 @@ function auth_odata_get_all_without_cache(string $url, array $auth): array
     $next = $url;
 
     while ($next) {
-        $resp = auth_odata_get_json($next, $auth);
+        $resp = auth_odata_get_json_direct($next, $auth);
         if (!isset($resp['value']) || !is_array($resp['value'])) {
             throw new RuntimeException("OData response missing 'value' array");
         }

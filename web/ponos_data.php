@@ -422,3 +422,10 @@ function ponos_new_id(): string
         . substr($hex, 16, 4) . '-'
         . substr($hex, 20, 12);
 }
+
+if (PHP_SAPI === 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && @realpath((string) $_SERVER['SCRIPT_FILENAME']) === @realpath(__FILE__)) {
+    $ponosAuthFile = __DIR__ . '/auth.php';
+    if (is_file($ponosAuthFile)) {
+        require_once $ponosAuthFile;
+    }
+}
