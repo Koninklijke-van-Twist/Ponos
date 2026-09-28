@@ -584,18 +584,30 @@ function auth_set_current_company_context(?string $company, int $ttlSeconds = 30
             $targetEnvironment = auth_get_primary_environment();
         }
 
-        // BC-auth alleen als lokaal geconfigureerd; anders lege sentinel.
+        // BC-auth alleen als lokaal geconfigureerd; anders lege sentinel voor aanroepers.
+        // Een bruikbare globale $auth blijft staan, zodat de BC-fallback die nog kan gebruiken.
         $targetAuth = [];
         if ($targetEnvironment !== '') {
             global $auth_list;
             $list = is_array($auth_list ?? null) ? $auth_list : [];
             if (isset($list[$targetEnvironment]) && is_array($list[$targetEnvironment])) {
                 $targetAuth = $list[$targetEnvironment];
+            } else {
+                foreach ($list as $listKey => $listEntry) {
+                    if (!is_array($listEntry) || strcasecmp((string) $listKey, $targetEnvironment) !== 0) {
+                        continue;
+                    }
+                    $targetAuth = $listEntry;
+                    break;
+                }
             }
         }
 
         $environment = $targetEnvironment;
-        $auth = $targetAuth;
+        $originalUsable = isset($auth) && function_exists('odata_auth_is_usable') && odata_auth_is_usable($auth);
+        if ($targetAuth !== [] || !$originalUsable) {
+            $auth = $targetAuth;
+        }
 
         return [
             'environment' => $targetEnvironment,

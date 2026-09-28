@@ -237,7 +237,7 @@ function odata_bc_environment_from_odata_url(string $url): ?string
     return odata_bc_environment();
 }
 
-function odata_bc_auth_for_environment(?string $env): ?array
+function odata_bc_auth_for_environment(?string $env, array $passed = []): ?array
 {
     if ($env === null) {
         return null;
@@ -246,17 +246,28 @@ function odata_bc_auth_for_environment(?string $env): ?array
     if ($env === '' || strcasecmp($env, 'mimir') === 0) {
         return null;
     }
-    global $auth_list;
-    if (!isset($auth_list) || !is_array($auth_list)) {
+    global $auth, $auth_list;
+    if (isset($auth_list) && is_array($auth_list)) {
+        if (isset($auth_list[$env]) && odata_auth_is_usable($auth_list[$env])) {
+            return $auth_list[$env];
+        }
+        foreach ($auth_list as $key => $entry) {
+            if (strcasecmp((string) $key, $env) === 0 && odata_auth_is_usable($entry)) {
+                return $entry;
+            }
+        }
+    }
+    $listMissing = !isset($auth_list) || !is_array($auth_list) || $auth_list === [];
+    $primary = odata_bc_environment();
+    $isPrimary = $primary !== null && strcasecmp($env, $primary) === 0;
+    if (!$listMissing && !$isPrimary) {
         return null;
     }
-    if (isset($auth_list[$env]) && odata_auth_is_usable($auth_list[$env])) {
-        return $auth_list[$env];
+    if (odata_auth_is_usable($passed)) {
+        return $passed;
     }
-    foreach ($auth_list as $key => $entry) {
-        if (strcasecmp((string) $key, $env) === 0 && odata_auth_is_usable($entry)) {
-            return $entry;
-        }
+    if (isset($auth) && odata_auth_is_usable($auth)) {
+        return $auth;
     }
     return null;
 }
@@ -321,7 +332,7 @@ function odata_bc_auth_for_request(string $url, array $passed): ?array
 {
     $specific = odata_bc_specific_environment($url);
     if ($specific !== null) {
-        return odata_bc_auth_for_environment($specific);
+        return odata_bc_auth_for_environment($specific, $passed);
     }
     return odata_bc_auth_for_fallback($passed);
 }
