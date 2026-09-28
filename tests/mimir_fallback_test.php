@@ -100,7 +100,8 @@ if ($names !== $expectedNames) {
 if (!odata_mimir_circuit_open()) {
     mimir_fallback_fail('circuit moet open na de eerste Mímir-fout');
 }
-if (count($calls) !== 1 || strpos($calls[0]['url'], 'https://bc.example:7148/Production/ODataV4/Company') !== 0) {
+$expectedCompanyUrl = 'https://bc.example:7148/Production/ODataV4/Company?$select=Name';
+if (count($calls) !== 1 || ($calls[0]['url'] ?? '') !== $expectedCompanyUrl) {
     mimir_fallback_fail('company-fallback riep de directe BC-fetch niet aan: ' . json_encode($calls));
 }
 if ($calls[0]['user'] !== 'bcuser') {
@@ -213,7 +214,7 @@ $onlyCalls = array_slice($calls, $beforeOnlyAuth);
 $onlyCompany = $onlyCalls[0] ?? null;
 $onlyQueryCall = $onlyCalls[1] ?? null;
 $onlyFetchCall = $onlyCalls[2] ?? null;
-if (!is_array($onlyCompany) || strpos($onlyCompany['url'], 'https://bc.example:7148/Production/ODataV4/Company') !== 0 || $onlyCompany['user'] !== 'only-auth') {
+if (!is_array($onlyCompany) || ($onlyCompany['url'] ?? '') !== 'https://bc.example:7148/Production/ODataV4/Company?$select=Name' || $onlyCompany['user'] !== 'only-auth') {
     mimir_fallback_fail('companylijst zonder $auth_list gebruikte niet $auth: ' . json_encode($onlyCompany));
 }
 if (!is_array($onlyQueryCall) || strpos($onlyQueryCall['url'], "https://bc.example:7148/Production/ODataV4/Company('Solo%20BV')/AppResource?") !== 0 || $onlyQueryCall['user'] !== 'only-auth') {

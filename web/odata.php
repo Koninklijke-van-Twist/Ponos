@@ -655,7 +655,7 @@ function odata_mimir_companies_as_rows_impl(?string $environment = null): array
 }
 
 /**
- * Directe BC-companylijst via de pre-Mímir OData-route ({base}/{env}/ODataV4/Company).
+ * Directe BC-companylijst via de pre-Mímir OData-route ({base}/{env}/ODataV4/Company?$select=Name).
  *
  * @return list<array<string, mixed>>
  */
@@ -710,7 +710,7 @@ function odata_direct_companies_as_rows(?string $environmentFilter = null): arra
             throw new Exception('Mímir mislukt.');
         }
 
-        $rows = odata_get_all_direct($base . odata_bc_encode_environment($env) . '/ODataV4/Company', $auth, 300);
+        $rows = odata_get_all_direct($base . odata_bc_encode_environment($env) . '/ODataV4/Company?$select=Name', $auth, 300);
         foreach ($rows as $row) {
             if (!is_array($row)) {
                 continue;
