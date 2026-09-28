@@ -584,18 +584,30 @@ function auth_set_current_company_context(?string $company, int $ttlSeconds = 30
             $targetEnvironment = auth_get_primary_environment();
         }
 
-        // BC-auth alleen als lokaal geconfigureerd; anders lege sentinel.
+        // BC-auth alleen als lokaal geconfigureerd; anders lege sentinel voor aanroepers.
+        // Een bruikbare globale $auth blijft staan, zodat de BC-fallback die nog kan gebruiken.
         $targetAuth = [];
         if ($targetEnvironment !== '') {
             global $auth_list;
             $list = is_array($auth_list ?? null) ? $auth_list : [];
             if (isset($list[$targetEnvironment]) && is_array($list[$targetEnvironment])) {
                 $targetAuth = $list[$targetEnvironment];
+            } else {
+                foreach ($list as $listKey => $listEntry) {
+                    if (!is_array($listEntry) || strcasecmp((string) $listKey, $targetEnvironment) !== 0) {
+                        continue;
+                    }
+                    $targetAuth = $listEntry;
+                    break;
+                }
             }
         }
 
         $environment = $targetEnvironment;
-        $auth = $targetAuth;
+        $originalUsable = isset($auth) && function_exists('odata_auth_is_usable') && odata_auth_is_usable($auth);
+        if ($targetAuth !== [] || !$originalUsable) {
+            $auth = $targetAuth;
+        }
 
         return [
             'environment' => $targetEnvironment,
@@ -659,9 +671,12 @@ function auth_odata_get_json(string $url, array $auth): array
                 return ['value' => odata_mimir_fetch_all_impl($url, 300)];
             },
             static function () use ($url, $auth): array {
+                if (function_exists('odata_bc_prepare_direct')) {
+                    $direct = odata_bc_prepare_direct($url, $auth);
+                    return auth_odata_get_json_direct($direct['url'], $direct['auth']);
+                }
                 $directUrl = function_exists('odata_bc_url_from_odata_url') ? odata_bc_url_from_odata_url($url) : $url;
-                $directAuth = function_exists('odata_bc_auth_for_fallback') ? (odata_bc_auth_for_fallback($auth) ?? $auth) : $auth;
-                return auth_odata_get_json_direct($directUrl, $directAuth);
+                return auth_odata_get_json_direct($directUrl, $auth);
             }
         );
     }
@@ -725,9 +740,12 @@ function auth_odata_get_all(string $url, array $auth, int $ttlSeconds = 300): ar
                 return odata_mimir_fetch_all_impl($url, $ttlSeconds === 0 ? 3600 : $ttlSeconds);
             },
             static function () use ($url, $auth, $ttlSeconds): array {
+                if (function_exists('odata_bc_prepare_direct')) {
+                    $direct = odata_bc_prepare_direct($url, $auth);
+                    return auth_odata_get_all_direct($direct['url'], $direct['auth'], $ttlSeconds);
+                }
                 $directUrl = function_exists('odata_bc_url_from_odata_url') ? odata_bc_url_from_odata_url($url) : $url;
-                $directAuth = function_exists('odata_bc_auth_for_fallback') ? (odata_bc_auth_for_fallback($auth) ?? $auth) : $auth;
-                return auth_odata_get_all_direct($directUrl, $directAuth, $ttlSeconds);
+                return auth_odata_get_all_direct($directUrl, $auth, $ttlSeconds);
             }
         );
     }

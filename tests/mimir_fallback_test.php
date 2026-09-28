@@ -178,6 +178,126 @@ if (!is_array($authCall) || $authCall['url'] !== "https://bc.example:7148/Produc
     mimir_fallback_fail('auth-fallback URL/auth/ttl klopt niet: ' . json_encode($authCall));
 }
 
+odata_mimir_circuit_reset();
+$mimirApi = 'mimir_test_key_should_not_leak';
+$mimirBase = 'http://127.0.0.1:9';
+$baseUrl = 'https://bc.example:7148/';
+$environment = 'Production';
+$auth = ['mode' => 'basic', 'user' => 'only-auth', 'pass' => 'only-secret'];
+unset($auth_list);
+unset($GLOBALS['demeter_company_environment_map']);
+$beforeOnlyAuth = count($calls);
+$onlyNames = odata_mimir_list_companies(null);
+if ($onlyNames !== $expectedNames) {
+    mimir_fallback_fail('companylijst zonder $auth_list gaf ' . json_encode($onlyNames));
+}
+$onlyQuery = odata_mimir_query('Solo BV', 'AppResource', ['$select' => 'No'], 10);
+if (($onlyQuery[0]['No'] ?? '') !== 'WO-1') {
+    mimir_fallback_fail('query zonder $auth_list viel niet terug');
+}
+$onlyFetch = odata_mimir_fetch_all(
+    "https://mimir.invalid/Production/ODataV4/Company('Solo%20BV')/AppWerkorders?\$select=No",
+    10
+);
+if (($onlyFetch[0]['No'] ?? '') !== 'WO-1') {
+    mimir_fallback_fail('URL-fetch zonder $auth_list viel niet terug');
+}
+$onlyCalls = array_slice($calls, $beforeOnlyAuth);
+$onlyCompany = $onlyCalls[0] ?? null;
+$onlyQueryCall = $onlyCalls[1] ?? null;
+$onlyFetchCall = $onlyCalls[2] ?? null;
+if (!is_array($onlyCompany) || strpos($onlyCompany['url'], 'https://bc.example:7148/Production/ODataV4/Company') !== 0 || $onlyCompany['user'] !== 'only-auth') {
+    mimir_fallback_fail('companylijst zonder $auth_list gebruikte niet $auth: ' . json_encode($onlyCompany));
+}
+if (!is_array($onlyQueryCall) || strpos($onlyQueryCall['url'], "https://bc.example:7148/Production/ODataV4/Company('Solo%20BV')/AppResource?") !== 0 || $onlyQueryCall['user'] !== 'only-auth') {
+    mimir_fallback_fail('query zonder $auth_list gebruikte niet $auth: ' . json_encode($onlyQueryCall));
+}
+if (!is_array($onlyFetchCall) || $onlyFetchCall['url'] !== "https://bc.example:7148/Production/ODataV4/Company('Solo%20BV')/AppWerkorders?\$select=No" || $onlyFetchCall['user'] !== 'only-auth') {
+    mimir_fallback_fail('URL-fetch zonder $auth_list gebruikte niet $auth: ' . json_encode($onlyFetchCall));
+}
+if (count($onlyCalls) !== 3) {
+    mimir_fallback_fail('alleen-$auth fallback deed ' . count($onlyCalls) . ' BC-calls: ' . json_encode($onlyCalls));
+}
+
+$GLOBALS['demeter_company_environment_map'] = ['Hunter van Twist' => 'Sandbox'];
+$keptAuth = $auth;
+$context = auth_set_current_company_context('Hunter van Twist', 30);
+if (($context['auth'] ?? null) !== [] || ($context['environment'] ?? '') !== 'Sandbox') {
+    mimir_fallback_fail('company-context zonder auth_list-entry moet een lege sentinel teruggeven: ' . json_encode($context));
+}
+if (($auth['user'] ?? '') !== 'only-auth' || ($auth['pass'] ?? '') !== 'only-secret') {
+    mimir_fallback_fail('company-context veegde de globale $auth weg: ' . json_encode($auth));
+}
+$environment = 'Production';
+$auth = $keptAuth;
+unset($GLOBALS['demeter_company_environment_map']);
+
+odata_mimir_circuit_reset();
+$environment = 'Production';
+$auth = ['mode' => 'basic', 'user' => 'prod-user', 'pass' => 'prod-secret'];
+$auth_list = [
+    'Sandbox' => ['mode' => 'basic', 'user' => 'sand-user', 'pass' => 'sand-secret'],
+];
+unset($GLOBALS['demeter_company_environment_map']);
+$beforeUnmapped = count($calls);
+$unmappedRows = odata_mimir_query('Unmapped BV', 'AppResource', ['$select' => 'No'], 12);
+if (($unmappedRows[0]['No'] ?? '') !== 'WO-1') {
+    mimir_fallback_fail('unmapped query viel niet terug');
+}
+$unmappedCall = $calls[$beforeUnmapped] ?? null;
+if (!is_array($unmappedCall) || strpos($unmappedCall['url'], "https://bc.example:7148/Production/ODataV4/Company('Unmapped%20BV')/AppResource?") !== 0 || $unmappedCall['user'] !== 'prod-user') {
+    mimir_fallback_fail('unmapped bedrijf ging niet via $auth: ' . json_encode($unmappedCall));
+}
+if (count($calls) !== $beforeUnmapped + 1) {
+    mimir_fallback_fail('unmapped query deed extra BC-calls: ' . json_encode(array_slice($calls, $beforeUnmapped)));
+}
+
+odata_mimir_circuit_reset();
+$mimirBase = 'http://127.0.0.1:9';
+$baseUrl = 'https://bc.example:7148/';
+$environment = 'Production';
+$auth = ['mode' => 'basic', 'user' => 'prod-user', 'pass' => 'prod-secret'];
+$auth_list = ['Production' => $auth];
+$beforeSandbox = count($calls);
+$sandboxRefused = false;
+try {
+    odata_get_all("https://mimir.invalid/Sandbox/ODataV4/Company('X')/AppWerkorders", $auth, 30);
+    mimir_fallback_fail('Sandbox-URL moet weigeren als alleen Production in $auth_list staat');
+} catch (Throwable $sandboxError) {
+    $sandboxRefused = strpos($sandboxError->getMessage(), 'Mímir') !== false;
+    if (!$sandboxRefused) {
+        mimir_fallback_fail('Sandbox-URL gooide niet de Mímir-fout: ' . $sandboxError->getMessage());
+    }
+}
+if (count($calls) !== $beforeSandbox) {
+    mimir_fallback_fail('Sandbox-URL mag geen BC-call doen: ' . json_encode(array_slice($calls, $beforeSandbox)));
+}
+$beforeSandboxCompanies = count($calls);
+try {
+    odata_mimir_list_companies('Sandbox');
+    mimir_fallback_fail('Sandbox-companylijst moet weigeren zonder eigen auth_list-entry');
+} catch (Throwable $sandboxCompaniesError) {
+    if (strpos($sandboxCompaniesError->getMessage(), 'Mímir') === false) {
+        mimir_fallback_fail('Sandbox-companylijst gooide niet de Mímir-fout: ' . $sandboxCompaniesError->getMessage());
+    }
+}
+if (count($calls) !== $beforeSandboxCompanies) {
+    mimir_fallback_fail('Sandbox-companylijst mag geen BC-call doen: ' . json_encode(array_slice($calls, $beforeSandboxCompanies)));
+}
+$beforeSandboxAuth = count($calls);
+try {
+    auth_odata_get_all("https://mimir.invalid/Sandbox/ODataV4/Company('X')/AppProjecten", $auth, 30);
+    mimir_fallback_fail('auth_odata_get_all moet een Sandbox-URL weigeren');
+} catch (Throwable $sandboxAuthError) {
+    if (strpos($sandboxAuthError->getMessage(), 'Mímir') === false) {
+        mimir_fallback_fail('auth-Sandbox-URL gooide niet de Mímir-fout: ' . $sandboxAuthError->getMessage());
+    }
+}
+if (count($calls) !== $beforeSandboxAuth) {
+    mimir_fallback_fail('auth-Sandbox-URL mag geen BC-call doen: ' . json_encode(array_slice($calls, $beforeSandboxAuth)));
+}
+unset($GLOBALS['demeter_company_environment_map']);
+
 $loggedBeforeRethrow = mimir_fallback_count();
 $callsBeforeRethrow = count($calls);
 odata_mimir_circuit_reset();
