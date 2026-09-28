@@ -66,6 +66,12 @@ function mimir_fallback_count(): int
     return substr_count(mimir_fallback_log(), '[Ponos] Mímir failed, falling back to direct OData:');
 }
 
+function mimir_fallback_seen_base_url(): string
+{
+    global $baseUrl;
+    return (string) $baseUrl;
+}
+
 foreach (['web/index.php', 'web/nightly.php', 'web/ponos_data.php', 'web/ponos_api_key.php'] as $mimirFallbackEntry) {
     $mimirFallbackSource = file_get_contents(dirname(__DIR__) . '/' . $mimirFallbackEntry);
     if (!is_string($mimirFallbackSource) || strpos($mimirFallbackSource, 'auth.php') === false) {
@@ -120,8 +126,8 @@ $expectedEntityUrl = "https://bc.example:7148/Production/ODataV4/Company('Konink
 if (!is_array($entityCall) || $entityCall['url'] !== $expectedEntityUrl || $entityCall['user'] !== 'bcuser' || $entityCall['ttl'] !== 120) {
     mimir_fallback_fail('entity-fallback URL/auth/ttl klopt niet: ' . json_encode($entityCall));
 }
-if (mimir_fallback_count() < 2) {
-    mimir_fallback_fail('elke fallback moet gelogd worden, log=' . mimir_fallback_log());
+if (mimir_fallback_count() !== 1) {
+    mimir_fallback_fail('alleen de eerste Mímir-fout mag een fallback loggen, log=' . mimir_fallback_log());
 }
 $log = mimir_fallback_log();
 if (strpos($log, 'mimir_test_key_should_not_leak') !== false || strpos($log, 'bc-secret') !== false) {
@@ -178,6 +184,84 @@ if (!is_array($authCall) || $authCall['url'] !== "https://bc.example:7148/Produc
     mimir_fallback_fail('auth-fallback URL/auth/ttl klopt niet: ' . json_encode($authCall));
 }
 
+$spacedUrl = odata_bc_url_from_odata_url("https://mimir.invalid/My%20Env/ODataV4/Company('KVT%20Gas')/AppWerkorders?\$select=No");
+$expectedSpacedUrl = "https://bc.example:7148/My%20Env/ODataV4/Company('KVT%20Gas')/AppWerkorders?\$select=No";
+if ($spacedUrl !== $expectedSpacedUrl) {
+    mimir_fallback_fail('environment-segment mag maar één keer geëncodeerd worden: ' . $spacedUrl);
+}
+
+$auth_list['Sandbox'] = ['mode' => 'basic', 'user' => 'sandbox-user', 'pass' => 'sandbox-secret'];
+$GLOBALS['demeter_company_environment_map'] = [
+    'Hunter van Twist' => 'Sandbox',
+    'KVT Gas' => 'Production',
+];
+odata_mimir_circuit_reset();
+$mimirApi = 'mimir_test_key_should_not_leak';
+$mimirBase = 'http://127.0.0.1:9';
+$beforeSandbox = count($calls);
+$loggedBeforeSandbox = mimir_fallback_count();
+$sandboxRows = odata_get_all(
+    "https://mimir.invalid/Sandbox/ODataV4/Company('Hunter%20van%20Twist')/AppWerkorders?\$select=No",
+    $auth,
+    10
+);
+$sandboxCall = $calls[$beforeSandbox] ?? null;
+if (($sandboxRows[0]['No'] ?? '') !== 'WO-1' || !is_array($sandboxCall)) {
+    mimir_fallback_fail('sandbox-fallback gaf geen stub-rijen terug');
+}
+if ($sandboxCall['user'] !== 'sandbox-user' || strpos($sandboxCall['url'], 'https://bc.example:7148/Sandbox/ODataV4/Company(') !== 0) {
+    mimir_fallback_fail('sandbox-URL moet de credentials van dat environment gebruiken: ' . json_encode($sandboxCall));
+}
+if (mimir_fallback_count() !== $loggedBeforeSandbox + 1) {
+    mimir_fallback_fail('sandbox-fallback moet precies één keer loggen');
+}
+
+odata_mimir_circuit_reset();
+$beforeSandboxQuery = count($calls);
+$sandboxQuery = odata_mimir_query('Hunter van Twist', 'AppResource', ['$select' => 'No'], 10);
+$sandboxQueryCall = $calls[$beforeSandboxQuery] ?? null;
+if (($sandboxQuery[0]['No'] ?? '') !== 'WO-1' || !is_array($sandboxQueryCall) || $sandboxQueryCall['user'] !== 'sandbox-user') {
+    mimir_fallback_fail('query voor een bedrijf in Sandbox gebruikte niet die environment: ' . json_encode($sandboxQueryCall));
+}
+if (strpos($sandboxQueryCall['url'], "https://bc.example:7148/Sandbox/ODataV4/Company('Hunter%20van%20Twist')/AppResource?") !== 0) {
+    mimir_fallback_fail('query-fallback bouwde niet de Sandbox-URL: ' . json_encode($sandboxQueryCall));
+}
+
+odata_mimir_circuit_reset();
+$loggedBeforeTranslate = mimir_fallback_count();
+$callsBeforeTranslate = count($calls);
+$translateThrew = false;
+try {
+    odata_get_all('https://mimir.invalid/not-an-odata-path', $auth, 10);
+} catch (Throwable $translateError) {
+    $translateThrew = strpos($translateError->getMessage(), 'kon niet worden vertaald') !== false;
+}
+if (!$translateThrew) {
+    mimir_fallback_fail('een onvertaalbare OData-URL moet de oorspronkelijke fout geven');
+}
+if (odata_mimir_circuit_open() || mimir_fallback_count() !== $loggedBeforeTranslate || count($calls) !== $callsBeforeTranslate) {
+    mimir_fallback_fail('een fout buiten Mímir mag het circuit niet openen en geen fallback loggen');
+}
+
+$savedEnvironmentForCache = $environment;
+$environment = 'mimir';
+$cacheKey = build_cache_key("https://mimir.invalid/Sandbox/ODataV4/Company('Hunter%20van%20Twist')/AppWerkorders", $auth);
+$cacheParts = explode('|', $cacheKey);
+$cacheEnv = $cacheParts[count($cacheParts) - 1] ?? '';
+if ($cacheEnv !== 'Sandbox') {
+    mimir_fallback_fail('cache-key moet het echte BC-environment gebruiken: ' . $cacheKey);
+}
+$mappedCacheKey = build_cache_key("https://mimir.invalid/mimir/ODataV4/Company('Hunter%20van%20Twist')/AppWerkorders", $auth);
+$mappedParts = explode('|', $mappedCacheKey);
+$mappedEnv = $mappedParts[count($mappedParts) - 1] ?? '';
+if ($mappedEnv !== 'Sandbox') {
+    mimir_fallback_fail('cache-key mag het placeholder-environment mimir niet gebruiken: ' . $mappedCacheKey);
+}
+$environment = $savedEnvironmentForCache;
+
+unset($GLOBALS['demeter_company_environment_map']);
+$auth_list = ['Production' => $auth];
+
 $loggedBeforeRethrow = mimir_fallback_count();
 $callsBeforeRethrow = count($calls);
 odata_mimir_circuit_reset();
@@ -230,7 +314,49 @@ if (($directRows[0]['No'] ?? '') !== 'WO-1' || !is_array($directCall) || $direct
     mimir_fallback_fail('lege $mimirApi moet de oude directe route ongewijzigd gebruiken: ' . json_encode($directCall));
 }
 
-unset($GLOBALS['PONOS_ODATA_BC_FETCH']);
+$authFile = tempnam(sys_get_temp_dir(), 'ponos-auth');
+if (!is_string($authFile) || $authFile === '') {
+    mimir_fallback_fail('tijdelijk auth-bestand kon niet worden aangemaakt');
+}
+file_put_contents(
+    $authFile,
+    "<?php\n\$baseUrl = 'https://bc-from-file.example:7148/';\n\$environment = 'Sandbox';\n\$auth = ['mode' => 'basic', 'user' => 'file-user', 'pass' => 'file-secret'];\n\$auth_list = ['Sandbox' => \$auth];\n\$base = 'https://bc-from-file.example:7148/';\n"
+);
+unset($GLOBALS['baseUrl'], $GLOBALS['environment'], $GLOBALS['auth'], $GLOBALS['auth_list'], $GLOBALS['base'], $GLOBALS['PONOS_AUTH_PHP_LOAD_TRIED']);
+$GLOBALS['PONOS_AUTH_PHP_PATH'] = $authFile;
+odata_load_auth_for_fallback();
+if (($GLOBALS['baseUrl'] ?? '') !== 'https://bc-from-file.example:7148/') {
+    mimir_fallback_fail('lazy auth.php zette baseUrl niet in $GLOBALS');
+}
+if (($GLOBALS['environment'] ?? '') !== 'Sandbox') {
+    mimir_fallback_fail('lazy auth.php zette environment niet in $GLOBALS');
+}
+if (($GLOBALS['auth']['user'] ?? '') !== 'file-user' || ($GLOBALS['auth_list']['Sandbox']['user'] ?? '') !== 'file-user') {
+    mimir_fallback_fail('lazy auth.php zette auth/auth_list niet in $GLOBALS');
+}
+if (($GLOBALS['base'] ?? '') !== 'https://bc-from-file.example:7148/') {
+    mimir_fallback_fail('lazy auth.php zette base niet in $GLOBALS');
+}
+if (mimir_fallback_seen_base_url() !== 'https://bc-from-file.example:7148/') {
+    mimir_fallback_fail('een functie met global $baseUrl ziet de gekopieerde waarde niet');
+}
+
+$GLOBALS['baseUrl'] = 'https://keep.example/';
+unset($GLOBALS['environment'], $GLOBALS['auth'], $GLOBALS['auth_list'], $GLOBALS['base'], $GLOBALS['PONOS_AUTH_PHP_LOAD_TRIED']);
+odata_load_auth_for_fallback();
+if (($GLOBALS['baseUrl'] ?? '') !== 'https://keep.example/') {
+    mimir_fallback_fail('een gezette baseUrl mag niet worden overschreven');
+}
+if (($GLOBALS['environment'] ?? '') !== 'Sandbox' || ($GLOBALS['auth']['user'] ?? '') !== 'file-user') {
+    mimir_fallback_fail('ontbrekende auth-globals moeten alsnog uit het bestand komen');
+}
+@unlink($authFile);
+
+if (strpos(mimir_fallback_log(), 'sandbox-secret') !== false || strpos(mimir_fallback_log(), 'file-secret') !== false) {
+    mimir_fallback_fail('log bevat een geheim uit auth_list of auth.php');
+}
+
+unset($GLOBALS['PONOS_ODATA_BC_FETCH'], $GLOBALS['PONOS_AUTH_PHP_PATH'], $GLOBALS['PONOS_AUTH_PHP_LOAD_TRIED'], $GLOBALS['demeter_company_environment_map']);
 odata_mimir_circuit_reset();
 $mimirApi = '';
 $mimirBase = '';
