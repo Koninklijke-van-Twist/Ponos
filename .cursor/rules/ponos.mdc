@@ -12,7 +12,7 @@ alwaysApply: true
 
 ## Niet wijzigen
 - Bestand `web/logincheck.php` niet aanpassen.
-- Bestand `web/odata.php` niet aanpassen.
+- Bestand `web/odata.php` niet aanpassen, behalve de Mímir-naar-BC-fallback die daar al staat (`odata_direct_query`, `odata_bc_url_from_odata_url`, `odata_direct_companies_as_rows`, cache-key, lazy auth-globals, circuit en de eenmalige fallback-log). Die functies kunnen niet van buitenaf worden vervangen. Andere wijzigingen in dit bestand blijven verboden.
 - Bestand `web/auth.php` alleen aanpassen na expliciete gebruikersvraag.
 
 ## Data en logica

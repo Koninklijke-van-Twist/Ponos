@@ -671,12 +671,20 @@ function auth_odata_get_json(string $url, array $auth): array
                 return ['value' => odata_mimir_fetch_all_impl($url, 300)];
             },
             static function () use ($url, $auth): array {
-                if (function_exists('odata_bc_prepare_direct')) {
-                    $direct = odata_bc_prepare_direct($url, $auth);
-                    return auth_odata_get_json_direct($direct['url'], $direct['auth']);
-                }
                 $directUrl = function_exists('odata_bc_url_from_odata_url') ? odata_bc_url_from_odata_url($url) : $url;
-                return auth_odata_get_json_direct($directUrl, $auth);
+                if (function_exists('odata_bc_auth_for_request')) {
+                    $directAuth = odata_bc_auth_for_request($directUrl, $auth);
+                } else {
+                    $directAuth = $auth;
+                }
+                if ($directAuth === null) {
+                    $previous = function_exists('odata_mimir_last_error') ? odata_mimir_last_error() : null;
+                    if ($previous instanceof Throwable) {
+                        throw $previous;
+                    }
+                    throw new RuntimeException('Mímir mislukt.');
+                }
+                return auth_odata_get_json_direct($directUrl, $directAuth);
             }
         );
     }
@@ -740,12 +748,20 @@ function auth_odata_get_all(string $url, array $auth, int $ttlSeconds = 300): ar
                 return odata_mimir_fetch_all_impl($url, $ttlSeconds === 0 ? 3600 : $ttlSeconds);
             },
             static function () use ($url, $auth, $ttlSeconds): array {
-                if (function_exists('odata_bc_prepare_direct')) {
-                    $direct = odata_bc_prepare_direct($url, $auth);
-                    return auth_odata_get_all_direct($direct['url'], $direct['auth'], $ttlSeconds);
-                }
                 $directUrl = function_exists('odata_bc_url_from_odata_url') ? odata_bc_url_from_odata_url($url) : $url;
-                return auth_odata_get_all_direct($directUrl, $auth, $ttlSeconds);
+                if (function_exists('odata_bc_auth_for_request')) {
+                    $directAuth = odata_bc_auth_for_request($directUrl, $auth);
+                } else {
+                    $directAuth = $auth;
+                }
+                if ($directAuth === null) {
+                    $previous = function_exists('odata_mimir_last_error') ? odata_mimir_last_error() : null;
+                    if ($previous instanceof Throwable) {
+                        throw $previous;
+                    }
+                    throw new RuntimeException('Mímir mislukt.');
+                }
+                return auth_odata_get_all_direct($directUrl, $directAuth, $ttlSeconds);
             }
         );
     }
