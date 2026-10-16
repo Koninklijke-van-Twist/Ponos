@@ -30,7 +30,11 @@ jobs:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_REMOTE_DIR: ${{ secrets.FTP_REMOTE_DIR }}
 
-      # Stap 1: alles op de server opruimen behalve .htaccess, .htpasswd, *.json, auth.php
+      # Cache-JSON, SQLite, bijlagen, prefs, avatars, auth.php en de
+      # root-.htaccess blijven op de server. lftp: het laatste passende
+      # patroon wint. Includes staan daarom ná de excludes, anders uploadt
+      # data/.htaccess of cache/.htaccess niet. Uitgesloten bestanden
+      # blijven staan; er is geen vlag die ze alsnog wist.
       - name: Deploy web/ to FTP (with delete & excludes)
         env:
           FTP_HOST: ${{ secrets.FTP_HOST }}
@@ -50,10 +54,51 @@ jobs:
           mirror -R --delete \
             --exclude-glob .htaccess \
             --exclude-glob cache/** \
+            --exclude-glob cache/* \
+            --exclude-glob cache/odata/** \
+            --exclude-glob cache/odata/* \
+            --exclude-glob cache/odata/*/ \
             --exclude-glob data/** \
+            --exclude-glob data/* \
+            --exclude-glob data/ponos/** \
+            --exclude-glob data/ponos/* \
+            --exclude-glob data/ponos/attachments/** \
+            --exclude-glob data/ponos/attachments/* \
+            --exclude-glob data/user_prefs/** \
+            --exclude-glob data/user_prefs/* \
+            --exclude-glob data/user_avatars/** \
+            --exclude-glob data/user_avatars/* \
             --exclude-glob analytics/*.sqlite \
             --exclude-glob analytics/*.sqlite-* \
             --exclude-glob auth.php \
+            --include-glob cache/ \
+            --include-glob cache/odata/ \
+            --include-glob cache/.htaccess \
+            --include-glob cache/index.html \
+            --include-glob cache/index.php \
+            --include-glob cache/odata/.htaccess \
+            --include-glob cache/odata/index.html \
+            --include-glob cache/odata/index.php \
+            --include-glob data/ \
+            --include-glob data/ponos/ \
+            --include-glob data/ponos/attachments/ \
+            --include-glob data/user_prefs/ \
+            --include-glob data/user_avatars/ \
+            --include-glob data/.htaccess \
+            --include-glob data/index.html \
+            --include-glob data/index.php \
+            --include-glob data/ponos/.htaccess \
+            --include-glob data/ponos/index.html \
+            --include-glob data/ponos/index.php \
+            --include-glob data/ponos/attachments/.htaccess \
+            --include-glob data/ponos/attachments/index.html \
+            --include-glob data/ponos/attachments/index.php \
+            --include-glob data/user_prefs/.htaccess \
+            --include-glob data/user_prefs/index.html \
+            --include-glob data/user_prefs/index.php \
+            --include-glob data/user_avatars/.htaccess \
+            --include-glob data/user_avatars/index.html \
+            --include-glob data/user_avatars/index.php \
             ./web .
 
           set cmd:fail-exit false
