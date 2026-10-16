@@ -1,17 +1,48 @@
 
 web/auth.php
 
-web/cache/
+web/cache/*
+!web/cache/.htaccess
+!web/cache/index.html
+!web/cache/index.php
+!web/cache/odata/
+web/cache/odata/*
+!web/cache/odata/.htaccess
+!web/cache/odata/index.html
+!web/cache/odata/index.php
 
 BC Webservices.txt
 
-web/data/user_prefs/
+web/data/*
+!web/data/.htaccess
+!web/data/index.html
+!web/data/index.php
+!web/data/ponos/
+!web/data/user_prefs/
+!web/data/user_avatars/
 
-web/data/ponos/
+web/data/ponos/*
+!web/data/ponos/.htaccess
+!web/data/ponos/index.html
+!web/data/ponos/index.php
+!web/data/ponos/attachments/
 
-web/data/user_avatars/
+web/data/ponos/attachments/*
+!web/data/ponos/attachments/.htaccess
+!web/data/ponos/attachments/index.html
+!web/data/ponos/attachments/index.php
 
-data/
+web/data/user_prefs/*
+!web/data/user_prefs/.htaccess
+!web/data/user_prefs/index.html
+!web/data/user_prefs/index.php
+
+web/data/user_avatars/*
+!web/data/user_avatars/.htaccess
+!web/data/user_avatars/index.html
+!web/data/user_avatars/index.php
+
+/data/
 
 web/analytics/analytics.sqlite
 web/analytics/analytics.sqlite-*

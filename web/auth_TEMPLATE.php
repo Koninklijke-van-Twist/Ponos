@@ -35,3 +35,8 @@ $graphCredentials = [
     'clientId' => '',
     'clientSecret' => '',
 ];
+
+// Optioneel, alleen als een HTTP-runner odata.php?action=… moet aanroepen.
+// Header X-Ponos-Secret moet exact dit geheim zijn. Weglaten: geen anonieme toegang.
+// CLI (php web/nightly.php) heeft dit niet nodig.
+// $ponosRunnerSecret = '';
