@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+require_once __DIR__ . '/kvt_protect_dirs.php';
 
 /**
  * Nightly Ponos jobs (cron om 02:00), bijv.:
