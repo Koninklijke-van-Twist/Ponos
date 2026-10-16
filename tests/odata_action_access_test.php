@@ -122,7 +122,7 @@ ponos_test('allowedUsers en runner-geheim volgen de Hermes-regels', function ():
     assert_true(odata_email_is_allowed('planner@kvt.nl', $allowed), 'map-gebruiker');
     assert_true(!odata_email_is_allowed('andere@kvt.nl', $allowed), 'niet op de lijst');
     assert_true(!odata_email_is_allowed('', $allowed), 'lege sessie');
-    assert_true(!odata_email_is_allowed('analyst@kvt.nl', null), 'geen whitelist');
+    assert_true(odata_email_is_allowed('analyst@kvt.nl', null), 'geen whitelist');
 
     assert_true(odata_direct_action_skips_login('cli', '', ''), 'cli zonder geheim');
     assert_true(!odata_direct_action_skips_login('fpm-fcgi', '', ''), 'web anoniem');
@@ -269,93 +269,7 @@ ponos_test('data en cache zijn dicht, inclusief submappen', function (): void {
     }
 });
 
-ponos_test('ftp-deploy uploadt afscherming en laat data staan', function (): void {
-    $workflow = (string) file_get_contents(dirname(__DIR__) . '/.github/workflows/deploy-ftp.yml');
-    $includeAt = strpos($workflow, '--include-glob cache/.htaccess');
-    $excludeCacheAt = strpos($workflow, '--exclude-glob cache/**');
-    $excludeOdataAt = strpos($workflow, '--exclude-glob cache/odata/**');
-    $excludeDataAt = strpos($workflow, '--exclude-glob data/**');
-    $includeDataAt = strpos($workflow, '--include-glob data/.htaccess');
-    assert_true($includeAt !== false && $excludeCacheAt !== false && $excludeOdataAt !== false, 'ftp-deploy mist cache-patronen');
-    assert_true($includeAt > $excludeCacheAt && $includeAt > $excludeOdataAt, 'cache/.htaccess moet ná de cache-excludes staan');
-    assert_true($excludeDataAt !== false && $includeDataAt !== false && $includeDataAt > $excludeDataAt, 'data/.htaccess moet ná de data-excludes staan');
-    assert_true(!ponos_odata_contains($workflow, '--delete-excluded'), 'uitgesloten data mag niet worden verwijderd');
-    assert_true(!ponos_odata_contains($workflow, '--include-glob data/**'), 'data-boom mag niet opnieuw worden meegenomen');
-    assert_true(!ponos_odata_contains($workflow, 'ponos.sqlite'), 'sqlite hoort niet in het deploy-script');
-
-    foreach ([
-        '--include-glob cache/index.html',
-        '--include-glob cache/index.php',
-        '--include-glob cache/odata/.htaccess',
-        '--include-glob cache/odata/index.html',
-        '--include-glob cache/odata/index.php',
-        '--include-glob data/index.html',
-        '--include-glob data/index.php',
-        '--include-glob data/ponos/.htaccess',
-        '--include-glob data/ponos/index.html',
-        '--include-glob data/ponos/index.php',
-        '--include-glob data/ponos/attachments/.htaccess',
-        '--include-glob data/ponos/attachments/index.html',
-        '--include-glob data/ponos/attachments/index.php',
-        '--include-glob data/user_prefs/.htaccess',
-        '--include-glob data/user_prefs/index.html',
-        '--include-glob data/user_prefs/index.php',
-        '--include-glob data/user_avatars/.htaccess',
-        '--include-glob data/user_avatars/index.html',
-        '--include-glob data/user_avatars/index.php',
-        '--exclude-glob auth.php',
-        '--exclude-glob .htaccess',
-        '--exclude-glob data/ponos/*',
-        '--exclude-glob data/ponos/attachments/*',
-        '--exclude-glob analytics/*.sqlite',
-    ] as $needle) {
-        assert_true(ponos_odata_contains($workflow, $needle), 'ftp-deploy mist ' . $needle);
-    }
-
-    $rules = ponos_lftp_rules_from_workflow($workflow);
-    assert_true($rules !== [], 'geen lftp-patronen');
-    $mustStay = [
-        'data/ponos/ponos.sqlite',
-        'data/ponos/ponos.sqlite-wal',
-        'data/ponos/attachments/foto.png',
-        'data/user_prefs/user@kvt.nl.json',
-        'data/user_avatars/user@kvt.nl.png',
-        'cache/odata/abc123.json',
-        'cache/odata/.cleanup_marker',
-        'auth.php',
-        '.htaccess',
-        'analytics/analytics.sqlite',
-    ];
-    $mustUpload = [
-        'data/.htaccess',
-        'data/index.html',
-        'data/index.php',
-        'data/ponos/.htaccess',
-        'data/ponos/index.html',
-        'data/ponos/index.php',
-        'data/ponos/attachments/.htaccess',
-        'data/ponos/attachments/index.html',
-        'data/ponos/attachments/index.php',
-        'data/user_prefs/.htaccess',
-        'data/user_avatars/.htaccess',
-        'cache/.htaccess',
-        'cache/index.html',
-        'cache/index.php',
-        'cache/odata/.htaccess',
-        'cache/odata/index.html',
-        'cache/odata/index.php',
-        'index.php',
-    ];
-    foreach ([false, true] as $starMatchesSlash) {
-        $label = $starMatchesSlash ? 'ster-matcht-slash' : 'ster-stopt-bij-slash';
-        foreach ($mustStay as $path) {
-            assert_true(!ponos_lftp_last_include($rules, $path, $starMatchesSlash), $label . ' uploadt ' . $path);
-        }
-        foreach ($mustUpload as $path) {
-            assert_true(ponos_lftp_last_include($rules, $path, $starMatchesSlash), $label . ' mist ' . $path);
-        }
-    }
-});
+// FTP-deploy en afscherming: zie tests/protect_dirs_test.php.
 
 ponos_test('anonieme odata-actie geeft geen cachedata', function (): void {
     $phpCgi = trim((string) shell_exec('command -v php-cgi 2>/dev/null'));

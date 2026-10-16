@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/kvt_protect_dirs.php';
 
 /**
  * Machine-readable API spec for Grok/LLM bots (Forum Magnum help/spec style).
