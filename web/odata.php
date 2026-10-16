@@ -1419,14 +1419,18 @@ function odata_is_direct_request(): bool
 
 /**
  * Zelfde toegestane gebruiker als logincheck.php: lijst of map in $allowedUsers.
+ * Ontbreekt de lijst, dan is elke ingelogde gebruiker toegestaan.
  *
  * @param mixed $allowedUsers
  */
 function odata_email_is_allowed(string $email, $allowedUsers): bool
 {
     $email = strtolower(trim($email));
-    if ($email === '' || !is_array($allowedUsers)) {
+    if ($email === '') {
         return false;
+    }
+    if (!is_array($allowedUsers)) {
+        return true;
     }
 
     foreach ($allowedUsers as $emailKey => $value) {

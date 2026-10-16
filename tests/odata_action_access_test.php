@@ -68,7 +68,8 @@ ponos_test('allowedUsers geldt voor lijst en map, niet voor een lege sessie', fu
     assert_true(odata_email_is_allowed('planner@kvt.nl', $allowed));
     assert_false(odata_email_is_allowed('andere@kvt.nl', $allowed));
     assert_false(odata_email_is_allowed('', $allowed));
-    assert_false(odata_email_is_allowed('analyst@kvt.nl', null));
+    assert_true(odata_email_is_allowed('analyst@kvt.nl', null));
+    assert_false(odata_email_is_allowed('', null));
 });
 
 ponos_test('cli of een bestaand servergeheim slaat de login over, een leeg geheim niet', function (): void {
